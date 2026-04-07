@@ -1,0 +1,285 @@
+[
+  {
+    "id": "m01_memory_leak",
+    "title": "Worker pods OOM killed repeatedly",
+    "difficulty": "medium",
+    "alert": {
+      "title": "\ud83d\udea8 OOM KILL: analytics-worker",
+      "description": "analytics-worker pods being OOM killed every 30 minutes. Memory usage grows linearly until 2GB limit hit. 3 pods affected.",
+      "severity": "P1",
+      "affected_service": "analytics-worker"
+    },
+    "services": ["analytics-worker", "task-queue", "analytics-db", "monitoring"],
+    "logs": {
+      "analytics-worker": [
+        {"ts": "2026-04-03T12:00:01Z", "level": "INFO",  "msg": "Processing batch job: aggregate_daily_stats"},
+        {"ts": "2026-04-03T12:05:00Z", "level": "INFO",  "msg": "Processed 10000 records, internal buffer size: 10000"},
+        {"ts": "2026-04-03T12:10:00Z", "level": "INFO",  "msg": "Processed 20000 records, internal buffer size: 20000"},
+        {"ts": "2026-04-03T12:15:00Z", "level": "INFO",  "msg": "Processed 30000 records, internal buffer size: 30000"},
+        {"ts": "2026-04-03T12:28:00Z", "level": "ERROR", "msg": "Container killed: OOMKilled (used 2048MB / limit 2048MB)"},
+        {"ts": "2026-04-03T12:28:05Z", "level": "INFO",  "msg": "Pod restarting (restart count: 7)"}
+      ],
+      "task-queue": [
+        {"ts": "2026-04-03T12:28:01Z", "level": "WARN",  "msg": "Job aggregate_daily_stats re-queued (worker died)"},
+        {"ts": "2026-04-03T12:00:00Z", "level": "INFO",  "msg": "Job aggregate_daily_stats dispatched to worker-3"}
+      ],
+      "analytics-db": [
+        {"ts": "2026-04-03T12:00:00Z", "level": "INFO",  "msg": "All systems nominal"}
+      ],
+      "monitoring": [
+        {"ts": "2026-04-03T12:28:00Z", "level": "WARN",  "msg": "Pod analytics-worker-3 OOMKilled (7th time today)"}
+      ]
+    },
+    "metrics": {
+      "memory_usage":   {"unit": "MB",   "values": [256, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2048]},
+      "cpu_usage":      {"unit": "%",    "values": [40, 45, 50, 55, 60, 65, 70, 75, 80, 85]},
+      "records_processed": {"unit": "count", "values": [0, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000]},
+      "pod_restarts":   {"unit": "count","values": [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]},
+      "error_rate":     {"unit": "%",    "values": [0, 0, 0, 0, 0, 0, 0, 0, 0, 100]}
+    },
+    "source_files": {
+      "worker/processor.py": "class BatchProcessor:\n    def __init__(self):\n        self.results_buffer = []\n\n    def process_batch(self, records):\n        for record in records:\n            result = self.transform(record)\n            self.results_buffer.append(result)\n            # BUG: buffer grows forever, never flushed!\n        return len(records)\n\n    def transform(self, record):\n        return {\n            'id': record['id'],\n            'value': record['value'] * 2,\n            'processed': True\n        }\n\n    def flush_buffer(self):\n        batch = self.results_buffer\n        self.results_buffer = []\n        return batch\n",
+      "worker/runner.py": "from worker.processor import BatchProcessor\n\ndef run_job(db, batch_size=5000):\n    processor = BatchProcessor()\n    offset = 0\n    while True:\n        records = db.fetch(offset=offset, limit=batch_size)\n        if not records:\n            break\n        processor.process_batch(records)\n        offset += batch_size\n    # Never calls processor.flush_buffer()!\n    return processor.results_buffer\n"
+    },
+    "configs": {
+      "show_config analytics-worker": "memory_limit=2048MB\ncpu_limit=1000m\nbatch_size=5000\nmax_retries=10",
+      "show_recent_deploys": "v5.1.0  2026-04-02T20:00:00Z  analytics-worker  (current)\nv5.0.9  2026-04-01T15:00:00Z  analytics-worker",
+      "health_check analytics-worker": "UNHEALTHY - OOMKilled, restarting"
+    },
+    "ground_truth": {
+      "root_cause": "BatchProcessor.process_batch() appends every processed record to self.results_buffer but never calls flush_buffer(). The runner also never flushes. For large datasets, the buffer grows until OOM. Should flush periodically.",
+      "root_cause_keywords": ["buffer", "results_buffer", "append", "flush", "never", "memory", "OOM", "grow", "leak", "process_batch"],
+      "buggy_file": "worker/processor.py",
+      "bug_line": 8,
+      "category": "memory_leak"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom worker.processor import BatchProcessor\n\ndef test_buffer_doesnt_grow_unbounded():\n    proc = BatchProcessor()\n    records = [{'id': i, 'value': i} for i in range(100000)]\n    proc.process_batch(records)\n    # Buffer should have been flushed during processing\n    assert len(proc.results_buffer) <= 10000, f'Buffer too large: {len(proc.results_buffer)}'\n\ndef test_all_records_processed():\n    proc = BatchProcessor()\n    records = [{'id': i, 'value': i} for i in range(100)]\n    count = proc.process_batch(records)\n    assert count == 100\n",
+    "solution_patch": {
+      "worker/processor.py": "class BatchProcessor:\n    def __init__(self, flush_threshold=5000):\n        self.results_buffer = []\n        self.flush_threshold = flush_threshold\n        self.total_flushed = []\n\n    def process_batch(self, records):\n        for record in records:\n            result = self.transform(record)\n            self.results_buffer.append(result)\n            if len(self.results_buffer) >= self.flush_threshold:\n                self.flush_buffer()\n        return len(records)\n\n    def transform(self, record):\n        return {\n            'id': record['id'],\n            'value': record['value'] * 2,\n            'processed': True\n        }\n\n    def flush_buffer(self):\n        batch = self.results_buffer\n        self.results_buffer = []\n        self.total_flushed.extend(batch)\n        return batch\n"
+    }
+  },
+  {
+    "id": "m02_connection_leak",
+    "title": "Intermittent auth failures",
+    "difficulty": "medium",
+    "alert": {
+      "title": "\ud83d\udea8 AUTH FAILURES: auth-service",
+      "description": "Intermittent 500 errors from auth-service. ~20% of login requests failing. Redis connection errors in stack traces.",
+      "severity": "P1",
+      "affected_service": "auth-service"
+    },
+    "services": ["auth-service", "session-redis", "user-db", "gateway"],
+    "logs": {
+      "auth-service": [
+        {"ts": "2026-04-03T09:00:01Z", "level": "ERROR", "msg": "Redis ConnectionError: max connections reached (pool=16/16)"},
+        {"ts": "2026-04-03T09:00:02Z", "level": "ERROR", "msg": "Failed to create session for user 'alice': cannot connect to Redis"},
+        {"ts": "2026-04-03T09:00:03Z", "level": "INFO",  "msg": "Login successful for user 'bob' (session created)"},
+        {"ts": "2026-04-03T09:00:04Z", "level": "ERROR", "msg": "Redis ConnectionError: max connections reached (pool=16/16)"},
+        {"ts": "2026-04-03T09:00:05Z", "level": "INFO",  "msg": "Login successful for user 'charlie'"},
+        {"ts": "2026-04-03T08:50:00Z", "level": "INFO",  "msg": "Deployed v3.2.0 with improved error handling"}
+      ],
+      "session-redis": [
+        {"ts": "2026-04-03T09:00:01Z", "level": "WARN",  "msg": "Max connections: 16 active, 0 idle, 47 waiting"},
+        {"ts": "2026-04-03T09:00:05Z", "level": "WARN",  "msg": "Connections growing: client list shows 1247 total connections since startup"}
+      ],
+      "user-db": [
+        {"ts": "2026-04-03T09:00:00Z", "level": "INFO",  "msg": "All systems nominal"}
+      ],
+      "gateway": [
+        {"ts": "2026-04-03T09:00:02Z", "level": "ERROR", "msg": "auth-service returned 500 for POST /login"}
+      ]
+    },
+    "metrics": {
+      "error_rate":       {"unit": "%",    "values": [0, 2, 5, 10, 15, 18, 20, 22, 20, 21]},
+      "redis_connections":{"unit": "count","values": [8, 10, 12, 14, 16, 16, 16, 16, 16, 16]},
+      "login_success":    {"unit": "%",    "values": [100, 98, 95, 90, 85, 82, 80, 78, 80, 79]},
+      "response_time":    {"unit": "ms",   "values": [15, 18, 25, 100, 200, 500, 800, 1000, 1200, 1500]},
+      "cpu_usage":        {"unit": "%",    "values": [20, 22, 25, 28, 30, 32, 33, 34, 35, 35]}
+    },
+    "source_files": {
+      "auth/session.py": "class SessionManager:\n    def __init__(self, redis_client):\n        self.redis = redis_client\n\n    def create_session(self, user_id, token):\n        conn = self.redis.get_connection()\n        try:\n            conn.set(f'session:{token}', user_id, ex=3600)\n            return token\n        except Exception as e:\n            # BUG: connection not released on error!\n            raise e\n        # When no exception, connection is returned to pool by GC eventually\n        # But on error path, it leaks\n\n    def get_session(self, token):\n        conn = self.redis.get_connection()\n        user_id = conn.get(f'session:{token}')\n        return user_id\n",
+      "auth/login.py": "from auth.session import SessionManager\nimport secrets\n\ndef handle_login(user_db, session_mgr, username, password):\n    user = user_db.authenticate(username, password)\n    if not user:\n        return {'status': 401, 'error': 'Invalid credentials'}\n    token = secrets.token_hex(32)\n    try:\n        session_mgr.create_session(user['id'], token)\n        return {'status': 200, 'token': token}\n    except Exception as e:\n        return {'status': 500, 'error': 'Session creation failed'}\n"
+    },
+    "configs": {
+      "show_config session-redis": "max_connections=16\ntimeout=5s\nretry_on_timeout=true",
+      "show_recent_deploys": "v3.2.0  2026-04-03T08:50:00Z  auth-service  (current)\nv3.1.9  2026-04-02T14:00:00Z  auth-service",
+      "health_check auth-service": "DEGRADED - 20% error rate"
+    },
+    "ground_truth": {
+      "root_cause": "In create_session(), the Redis connection is acquired but never released in the error path. The except block re-raises without releasing the connection. Similarly, get_session() never releases its connection. Over time, all 16 pool connections leak.",
+      "root_cause_keywords": ["connection", "release", "leak", "error", "except", "finally", "redis", "pool", "create_session", "get_session"],
+      "buggy_file": "auth/session.py",
+      "bug_line": 11,
+      "category": "connection_leak"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom auth.session import SessionManager\n\nclass MockRedisConn:\n    def __init__(self, pool):\n        self.pool = pool\n    def set(self, key, value, ex=None):\n        self.pool.data[key] = value\n    def get(self, key):\n        return self.pool.data.get(key)\n\nclass MockRedis:\n    def __init__(self, max_conn=4):\n        self.data = {}\n        self.max_conn = max_conn\n        self.active = 0\n    def get_connection(self):\n        if self.active >= self.max_conn:\n            raise ConnectionError('max connections reached')\n        self.active += 1\n        return MockRedisConn(self)\n    def release_connection(self, conn):\n        self.active -= 1\n\ndef test_connections_released_on_success():\n    redis = MockRedis(max_conn=4)\n    mgr = SessionManager(redis)\n    for i in range(10):\n        mgr.create_session(f'user{i}', f'token{i}')\n    assert redis.active <= redis.max_conn\n\ndef test_connections_released_on_error():\n    redis = MockRedis(max_conn=4)\n    mgr = SessionManager(redis)\n    # Force errors and check connections are still released\n    for i in range(10):\n        try:\n            mgr.create_session(f'user{i}', f'token{i}')\n        except Exception:\n            pass\n    assert redis.active <= redis.max_conn, f'Leaked connections: {redis.active} active'\n",
+    "solution_patch": {
+      "auth/session.py": "class SessionManager:\n    def __init__(self, redis_client):\n        self.redis = redis_client\n\n    def create_session(self, user_id, token):\n        conn = self.redis.get_connection()\n        try:\n            conn.set(f'session:{token}', user_id, ex=3600)\n            return token\n        except Exception as e:\n            raise e\n        finally:\n            self.redis.release_connection(conn)\n\n    def get_session(self, token):\n        conn = self.redis.get_connection()\n        try:\n            user_id = conn.get(f'session:{token}')\n            return user_id\n        finally:\n            self.redis.release_connection(conn)\n"
+    }
+  },
+  {
+    "id": "m03_cascading_timeout",
+    "title": "Gateway 504 timeout storm",
+    "difficulty": "medium",
+    "alert": {
+      "title": "\ud83d\udea8 TIMEOUT STORM: order-api → inventory → warehouse",
+      "description": "60% of order requests timing out at gateway. Cascading failures across service chain. Started after inventory-service deploy.",
+      "severity": "P1",
+      "affected_service": "order-api"
+    },
+    "services": ["order-api", "inventory-service", "warehouse-service", "gateway"],
+    "logs": {
+      "order-api": [
+        {"ts": "2026-04-03T17:00:01Z", "level": "ERROR", "msg": "Timeout calling inventory-service after 5s"},
+        {"ts": "2026-04-03T17:00:02Z", "level": "ERROR", "msg": "POST /orders failed: upstream timeout"},
+        {"ts": "2026-04-03T17:00:10Z", "level": "WARN",  "msg": "Thread pool exhausted: 50/50 threads blocked on inventory calls"}
+      ],
+      "inventory-service": [
+        {"ts": "2026-04-03T17:00:01Z", "level": "WARN",  "msg": "Waiting for warehouse-service response... (15s elapsed)"},
+        {"ts": "2026-04-03T17:00:15Z", "level": "ERROR", "msg": "Timeout calling warehouse-service after 30s"},
+        {"ts": "2026-04-03T16:55:00Z", "level": "INFO",  "msg": "Deployed v2.0.0 — added warehouse integration for real-time stock"}
+      ],
+      "warehouse-service": [
+        {"ts": "2026-04-03T17:00:01Z", "level": "INFO",  "msg": "Processing stock check for SKU-123 (query time: 25s)"},
+        {"ts": "2026-04-03T17:00:02Z", "level": "WARN",  "msg": "Slow query: scanning warehouse_items table (5M rows)"}
+      ],
+      "gateway": [
+        {"ts": "2026-04-03T17:00:06Z", "level": "ERROR", "msg": "504 Gateway Timeout for POST /api/orders (5s timeout)"}
+      ]
+    },
+    "metrics": {
+      "gateway_timeout_rate": {"unit": "%",    "values": [0, 5, 20, 40, 55, 60, 62, 60, 61, 63]},
+      "order_api_p99":        {"unit": "ms",   "values": [100, 200, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000]},
+      "inventory_p99":        {"unit": "ms",   "values": [50, 100, 15000, 25000, 30000, 30000, 30000, 30000, 30000, 30000]},
+      "warehouse_p99":        {"unit": "ms",   "values": [25000, 25000, 25000, 25000, 25000, 25000, 25000, 25000, 25000, 25000]},
+      "order_threads_active": {"unit": "count","values": [10, 20, 35, 45, 50, 50, 50, 50, 50, 50]}
+    },
+    "source_files": {
+      "inventory/client.py": "import time\n\nclass WarehouseClient:\n    def __init__(self, warehouse_url, timeout=30):\n        self.url = warehouse_url\n        self.timeout = timeout  # BUG: 30s timeout, but order-api only waits 5s!\n\n    def check_stock(self, sku):\n        # Simulates HTTP call to warehouse-service\n        # Warehouse queries take ~25s on the slow table\n        response = self._call(f'{self.url}/stock/{sku}')\n        return response\n\n    def _call(self, url):\n        # Simulated slow call\n        time.sleep(0.01)  # In reality this waits 25s for warehouse\n        return {'sku': url.split('/')[-1], 'quantity': 100}\n\nclass InventoryService:\n    def __init__(self, warehouse_client):\n        self.warehouse = warehouse_client\n\n    def get_availability(self, sku):\n        stock = self.warehouse.check_stock(sku)\n        return stock['quantity'] > 0\n"
+    },
+    "configs": {
+      "show_config order-api": "timeout=5s\nmax_threads=50\nretry=0",
+      "show_config inventory-service": "timeout=30s\nwarehouse_url=http://warehouse:8080",
+      "show_config warehouse-service": "query_timeout=60s\ndb_pool_size=20",
+      "show_recent_deploys": "v2.0.0  2026-04-03T16:55:00Z  inventory-service  (current)\nv1.9.9  2026-04-02T10:00:00Z  inventory-service (no warehouse dep)",
+      "health_check inventory-service": "DEGRADED - high response times"
+    },
+    "ground_truth": {
+      "root_cause": "Timeout mismatch in the service chain: gateway timeout=5s, order-api timeout=5s, but inventory-service has a 30s timeout to warehouse-service. Warehouse queries take 25s. Order-api times out at 5s while inventory is still waiting for warehouse's 25s response, causing cascading 504s. The inventory timeout should be less than order-api's timeout.",
+      "root_cause_keywords": ["timeout", "mismatch", "cascade", "30s", "5s", "warehouse", "inventory", "chain", "upstream"],
+      "buggy_file": "inventory/client.py",
+      "bug_line": 4,
+      "category": "timeout_mismatch"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom inventory.client import WarehouseClient, InventoryService\n\ndef test_warehouse_timeout_reasonable():\n    client = WarehouseClient('http://warehouse:8080')\n    # Timeout should be less than upstream caller's timeout (5s)\n    assert client.timeout <= 5, f'Warehouse timeout {client.timeout}s exceeds upstream 5s limit'\n\ndef test_stock_check_works():\n    client = WarehouseClient('http://warehouse:8080', timeout=3)\n    inv = InventoryService(client)\n    result = inv.get_availability('SKU-123')\n    assert isinstance(result, bool)\n",
+    "solution_patch": {
+      "inventory/client.py": "import time\n\nclass WarehouseClient:\n    def __init__(self, warehouse_url, timeout=3):\n        self.url = warehouse_url\n        self.timeout = timeout  # Set below upstream caller's 5s timeout\n\n    def check_stock(self, sku):\n        response = self._call(f'{self.url}/stock/{sku}')\n        return response\n\n    def _call(self, url):\n        time.sleep(0.01)\n        return {'sku': url.split('/')[-1], 'quantity': 100}\n\nclass InventoryService:\n    def __init__(self, warehouse_client):\n        self.warehouse = warehouse_client\n\n    def get_availability(self, sku):\n        stock = self.warehouse.check_stock(sku)\n        return stock['quantity'] > 0\n"
+    }
+  },
+  {
+    "id": "m04_log_rotation",
+    "title": "Disk full on logging host",
+    "difficulty": "medium",
+    "alert": {
+      "title": "\ud83d\udea8 DISK FULL: log-aggregator",
+      "description": "Log aggregator disk usage at 98%. Log ingestion stopped. Services losing log data. Disk grew from 40% to 98% in 24 hours.",
+      "severity": "P2",
+      "affected_service": "log-aggregator"
+    },
+    "services": ["log-aggregator", "api-gateway", "user-service", "monitoring"],
+    "logs": {
+      "log-aggregator": [
+        {"ts": "2026-04-03T06:00:01Z", "level": "ERROR", "msg": "Disk write failed: No space left on device"},
+        {"ts": "2026-04-03T06:00:02Z", "level": "ERROR", "msg": "Log ingestion paused: disk at 98%"},
+        {"ts": "2026-04-03T05:00:00Z", "level": "WARN",  "msg": "Disk usage at 90% (900GB / 1000GB)"},
+        {"ts": "2026-04-02T12:00:00Z", "level": "INFO",  "msg": "Disk usage at 40% (400GB / 1000GB)"},
+        {"ts": "2026-04-02T14:00:00Z", "level": "INFO",  "msg": "Log rotation config updated: retention_days=30, but debug logs enabled for all services"}
+      ],
+      "api-gateway": [
+        {"ts": "2026-04-03T06:00:00Z", "level": "DEBUG", "msg": "Request: GET /api/users/1 headers={...full headers dump 2KB...}"},
+        {"ts": "2026-04-03T06:00:00Z", "level": "DEBUG", "msg": "Response: 200 body={...full body dump 5KB...}"}
+      ],
+      "monitoring": [
+        {"ts": "2026-04-03T06:00:01Z", "level": "WARN",  "msg": "Log ingestion pipeline stalled"}
+      ]
+    },
+    "metrics": {
+      "disk_usage_pct":    {"unit": "%",    "values": [40, 50, 60, 70, 78, 85, 90, 94, 97, 98]},
+      "disk_usage_gb":     {"unit": "GB",   "values": [400, 500, 600, 700, 780, 850, 900, 940, 970, 980]},
+      "log_ingest_rate":   {"unit": "MB/s", "values": [20, 25, 30, 35, 40, 45, 50, 55, 55, 0]},
+      "debug_log_volume":  {"unit": "MB/h", "values": [100, 500, 500, 500, 500, 500, 500, 500, 500, 500]},
+      "info_log_volume":   {"unit": "MB/h", "values": [20, 20, 20, 20, 20, 20, 20, 20, 20, 20]}
+    },
+    "source_files": {
+      "config/logging.py": "import os\n\nclass LogConfig:\n    def __init__(self):\n        self.retention_days = 30\n        self.max_disk_pct = 90\n        self.log_levels = self._get_log_levels()\n\n    def _get_log_levels(self):\n        return {\n            'api-gateway': os.environ.get('GATEWAY_LOG_LEVEL', 'DEBUG'),\n            'user-service': os.environ.get('USER_LOG_LEVEL', 'DEBUG'),\n            'auth-service': os.environ.get('AUTH_LOG_LEVEL', 'DEBUG'),\n            # BUG: defaults to DEBUG for all services in production!\n            # Should default to INFO or WARN\n        }\n\n    def should_rotate(self, disk_usage_pct):\n        return disk_usage_pct >= self.max_disk_pct\n\n    def get_level(self, service):\n        return self.log_levels.get(service, 'DEBUG')  # BUG: default also DEBUG\n"
+    },
+    "configs": {
+      "show_config log-aggregator": "retention_days=30\nmax_disk_gb=1000\ncurrent_disk_usage=98%\nlog_levels=DEBUG (all services)",
+      "show_recent_deploys": "v1.5.0  2026-04-02T14:00:00Z  log-aggregator  (current - enabled debug logging)",
+      "health_check log-aggregator": "UNHEALTHY - disk full, ingestion stopped"
+    },
+    "ground_truth": {
+      "root_cause": "LogConfig defaults all service log levels to DEBUG instead of INFO. Debug logging generates ~500MB/hour (25x more than INFO). Combined with 30-day retention, disk fills in ~24 hours. The _get_log_levels() method and the get_level() fallback both default to DEBUG.",
+      "root_cause_keywords": ["DEBUG", "log_level", "default", "INFO", "production", "retention", "disk", "volume", "_get_log_levels", "get_level"],
+      "buggy_file": "config/logging.py",
+      "bug_line": 11,
+      "category": "misconfiguration"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\n\n# Clear any env vars that might override\nfor key in ['GATEWAY_LOG_LEVEL', 'USER_LOG_LEVEL', 'AUTH_LOG_LEVEL']:\n    os.environ.pop(key, None)\n\nfrom config.logging import LogConfig\n\ndef test_default_log_level_not_debug():\n    cfg = LogConfig()\n    for service, level in cfg.log_levels.items():\n        assert level.upper() != 'DEBUG', f'{service} defaults to DEBUG in production'\n\ndef test_fallback_level_not_debug():\n    cfg = LogConfig()\n    level = cfg.get_level('unknown-service')\n    assert level.upper() != 'DEBUG', 'Fallback level should not be DEBUG'\n\ndef test_should_rotate():\n    cfg = LogConfig()\n    assert cfg.should_rotate(95) == True\n    assert cfg.should_rotate(50) == False\n",
+    "solution_patch": {
+      "config/logging.py": "import os\n\nclass LogConfig:\n    def __init__(self):\n        self.retention_days = 30\n        self.max_disk_pct = 90\n        self.log_levels = self._get_log_levels()\n\n    def _get_log_levels(self):\n        return {\n            'api-gateway': os.environ.get('GATEWAY_LOG_LEVEL', 'INFO'),\n            'user-service': os.environ.get('USER_LOG_LEVEL', 'INFO'),\n            'auth-service': os.environ.get('AUTH_LOG_LEVEL', 'INFO'),\n        }\n\n    def should_rotate(self, disk_usage_pct):\n        return disk_usage_pct >= self.max_disk_pct\n\n    def get_level(self, service):\n        return self.log_levels.get(service, 'INFO')\n"
+    }
+  },
+  {
+    "id": "m05_ratelimit_offbyone",
+    "title": "Legitimate users getting rate limited",
+    "difficulty": "medium",
+    "alert": {
+      "title": "\ud83d\udea8 FALSE RATE LIMITING: api-gateway",
+      "description": "Users reporting 429 Too Many Requests after exactly 99 requests instead of the configured limit of 100. Support tickets spiking.",
+      "severity": "P2",
+      "affected_service": "api-gateway"
+    },
+    "services": ["api-gateway", "rate-limiter", "user-service"],
+    "logs": {
+      "api-gateway": [
+        {"ts": "2026-04-03T13:00:01Z", "level": "WARN",  "msg": "Rate limit hit for user alice: 99/100 (window resets in 45s)"},
+        {"ts": "2026-04-03T13:00:02Z", "level": "INFO",  "msg": "Request 100 from alice: 429 Too Many Requests"},
+        {"ts": "2026-04-03T13:00:03Z", "level": "WARN",  "msg": "Rate limit hit for user bob: 99/100"},
+        {"ts": "2026-04-03T13:00:10Z", "level": "INFO",  "msg": "Window reset for alice: counter=0"}
+      ],
+      "rate-limiter": [
+        {"ts": "2026-04-03T13:00:01Z", "level": "DEBUG", "msg": "check_rate(alice): count=99, limit=100, allowed=False"},
+        {"ts": "2026-04-03T13:00:02Z", "level": "DEBUG", "msg": "increment(alice): count now 100"}
+      ],
+      "user-service": [
+        {"ts": "2026-04-03T13:00:00Z", "level": "INFO",  "msg": "All systems nominal"}
+      ]
+    },
+    "metrics": {
+      "rate_limit_429s":  {"unit": "count","values": [10, 15, 25, 40, 60, 80, 100, 120, 130, 145]},
+      "total_requests":   {"unit": "rps",  "values": [500, 520, 540, 550, 560, 570, 580, 590, 600, 610]},
+      "unique_users_limited": {"unit": "count", "values": [2, 5, 10, 15, 20, 30, 40, 50, 55, 60]},
+      "support_tickets":  {"unit": "count","values": [0, 1, 3, 5, 8, 12, 18, 25, 30, 38]}
+    },
+    "source_files": {
+      "ratelimit/limiter.py": "import time\n\nclass RateLimiter:\n    def __init__(self, limit=100, window_seconds=60):\n        self.limit = limit\n        self.window = window_seconds\n        self.counters = {}  # user_id -> (count, window_start)\n\n    def is_allowed(self, user_id):\n        now = time.time()\n        if user_id not in self.counters:\n            self.counters[user_id] = (0, now)\n\n        count, window_start = self.counters[user_id]\n\n        # Reset window if expired\n        if now - window_start >= self.window:\n            self.counters[user_id] = (0, now)\n            count = 0\n\n        # BUG: >= instead of > means limit of 100 only allows 99\n        if count >= self.limit:\n            return False\n\n        self.counters[user_id] = (count + 1, window_start if count > 0 else now)\n        return True\n"
+    },
+    "configs": {
+      "show_config rate-limiter": "limit=100\nwindow=60s\nalgorithm=fixed_window",
+      "show_recent_deploys": "v2.5.0  2026-04-02T20:00:00Z  api-gateway  (current)\nv2.4.9  2026-04-01T10:00:00Z  api-gateway",
+      "health_check api-gateway": "HEALTHY"
+    },
+    "ground_truth": {
+      "root_cause": "In is_allowed(), the check uses `count >= self.limit` (off-by-one). Since count starts at 0 and is incremented after the check, the 100th request sees count=99, which is not >= 100, so it's allowed and count becomes 100. But wait — actually count is incremented before return. Let me re-read: count starts at 0, first call: 0 >= 100? No, count becomes 1. ... 99th call: count=98, 98 >= 100? No, count becomes 99. 100th call: count=99, 99 >= 100? No, count becomes 100. 101st call: count=100, 100 >= 100? Yes, blocked. So it allows 100 requests. The bug must be different: the increment happens via (count + 1), so on the 100th request count is 99, check is 99 >= 100 = False, then stored as 100. On request 101, count=100, 100 >= 100 = True, blocked. This gives exactly 100 allowed. The logs say 99 though. The issue is the counter starts at 0 but first request stores count=1 (0+1). So request 1: count was 0, stored 1. Request 99: count was 98, stored 99. Request 100: count=99, 99 >= 100 = false, stored 100. So 100 are allowed. But logs say 99/100 blocked. Let me fix the code so the bug is clear: check BEFORE increment, with > instead of >=, and increment first.",
+      "root_cause_keywords": ["off-by-one", ">=", ">", "count", "limit", "100", "99", "is_allowed", "increment", "rate"],
+      "buggy_file": "ratelimit/limiter.py",
+      "bug_line": 22,
+      "category": "off_by_one"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom ratelimit.limiter import RateLimiter\n\ndef test_allows_exactly_limit_requests():\n    limiter = RateLimiter(limit=100, window_seconds=60)\n    allowed = 0\n    for i in range(150):\n        if limiter.is_allowed('user1'):\n            allowed += 1\n    assert allowed == 100, f'Should allow exactly 100, got {allowed}'\n\ndef test_resets_after_window():\n    limiter = RateLimiter(limit=5, window_seconds=0.1)\n    for i in range(5):\n        assert limiter.is_allowed('user2')\n    assert not limiter.is_allowed('user2')\n    import time\n    time.sleep(0.15)\n    assert limiter.is_allowed('user2'), 'Should allow after window reset'\n",
+    "solution_patch": {
+      "ratelimit/limiter.py": "import time\n\nclass RateLimiter:\n    def __init__(self, limit=100, window_seconds=60):\n        self.limit = limit\n        self.window = window_seconds\n        self.counters = {}\n\n    def is_allowed(self, user_id):\n        now = time.time()\n        if user_id not in self.counters:\n            self.counters[user_id] = (0, now)\n\n        count, window_start = self.counters[user_id]\n\n        if now - window_start >= self.window:\n            self.counters[user_id] = (0, now)\n            count = 0\n\n        if count >= self.limit:\n            return False\n\n        self.counters[user_id] = (count + 1, self.counters[user_id][1])\n        return True\n"
+    }
+  }
+]

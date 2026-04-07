@@ -1,0 +1,304 @@
+[
+  {
+    "id": "h01_race_condition",
+    "title": "Duplicate orders being created",
+    "difficulty": "hard",
+    "alert": {
+      "title": "\ud83d\udea8 DATA INTEGRITY: Duplicate orders detected",
+      "description": "Customers charged twice for same order. 47 duplicate orders found in last hour. Occurs when two workers process same job from queue simultaneously.",
+      "severity": "P1",
+      "affected_service": "order-processor"
+    },
+    "services": ["order-processor", "job-queue", "order-db", "payment-service"],
+    "logs": {
+      "order-processor": [
+        {"ts": "2026-04-03T18:00:01Z", "level": "INFO",  "msg": "Worker-1: Processing job order:1001"},
+        {"ts": "2026-04-03T18:00:01Z", "level": "INFO",  "msg": "Worker-2: Processing job order:1001"},
+        {"ts": "2026-04-03T18:00:02Z", "level": "INFO",  "msg": "Worker-1: Order 1001 created, charging $49.99"},
+        {"ts": "2026-04-03T18:00:02Z", "level": "INFO",  "msg": "Worker-2: Order 1001 created, charging $49.99"},
+        {"ts": "2026-04-03T18:00:03Z", "level": "WARN",  "msg": "Duplicate order detected: order_id=1001 exists twice in DB"},
+        {"ts": "2026-04-03T18:00:05Z", "level": "ERROR", "msg": "Customer support: user 'alice' charged twice for order 1001"}
+      ],
+      "job-queue": [
+        {"ts": "2026-04-03T18:00:00Z", "level": "INFO",  "msg": "Job order:1001 fetched by Worker-1"},
+        {"ts": "2026-04-03T18:00:00Z", "level": "INFO",  "msg": "Job order:1001 fetched by Worker-2 (not yet acknowledged)"},
+        {"ts": "2026-04-03T18:00:02Z", "level": "INFO",  "msg": "Job order:1001 acknowledged by Worker-1"},
+        {"ts": "2026-04-03T18:00:02Z", "level": "INFO",  "msg": "Job order:1001 acknowledged by Worker-2"}
+      ],
+      "payment-service": [
+        {"ts": "2026-04-03T18:00:02Z", "level": "INFO",  "msg": "Charge $49.99 to user alice (txn-001)"},
+        {"ts": "2026-04-03T18:00:02Z", "level": "INFO",  "msg": "Charge $49.99 to user alice (txn-002)"}
+      ],
+      "order-db": [
+        {"ts": "2026-04-03T18:00:03Z", "level": "WARN",  "msg": "Duplicate key in orders table: order_id=1001 (no unique constraint)"}
+      ]
+    },
+    "metrics": {
+      "duplicate_orders":  {"unit": "count","values": [0, 2, 5, 10, 18, 25, 32, 38, 43, 47]},
+      "queue_depth":       {"unit": "count","values": [100, 95, 88, 80, 72, 65, 58, 50, 42, 35]},
+      "workers_active":    {"unit": "count","values": [4, 4, 4, 4, 4, 4, 4, 4, 4, 4]},
+      "orders_per_min":    {"unit": "count","values": [20, 22, 24, 25, 26, 28, 30, 28, 27, 26]},
+      "double_charges":    {"unit": "count","values": [0, 2, 5, 10, 18, 25, 32, 38, 43, 47]}
+    },
+    "source_files": {
+      "order/processor.py": "class OrderProcessor:\n    def __init__(self, db, payment, queue):\n        self.db = db\n        self.payment = payment\n        self.queue = queue\n\n    def process_job(self, job_id):\n        job = self.queue.fetch(job_id)\n        # BUG: No lock! Multiple workers can fetch same job\n        if job is None:\n            return None\n\n        order = self.db.create_order(\n            user_id=job['user_id'],\n            amount=job['amount'],\n            items=job['items']\n        )\n\n        self.payment.charge(job['user_id'], job['amount'])\n        self.queue.acknowledge(job_id)\n        return order\n",
+      "order/queue.py": "class JobQueue:\n    def __init__(self):\n        self.jobs = {}\n        self.acknowledged = set()\n\n    def add(self, job_id, data):\n        self.jobs[job_id] = data\n\n    def fetch(self, job_id):\n        # BUG: doesn't mark as in-progress, multiple workers can fetch same job\n        return self.jobs.get(job_id)\n\n    def acknowledge(self, job_id):\n        self.acknowledged.add(job_id)\n"
+    },
+    "configs": {
+      "show_config order-processor": "workers=4\nconcurrency=true\nqueue_type=in_memory\nlock_enabled=false",
+      "show_config order-db": "unique_constraints=none on order_id",
+      "show_recent_deploys": "v3.0.0  2026-04-03T16:00:00Z  order-processor  (current, added multi-worker)\nv2.9.0  2026-04-02T10:00:00Z  order-processor  (single worker)",
+      "health_check order-processor": "HEALTHY (but duplicate data detected)"
+    },
+    "ground_truth": {
+      "root_cause": "JobQueue.fetch() returns the job without marking it as in-progress or removing it. Multiple workers can call fetch() for the same job_id simultaneously, both get the job data, and both process it — creating duplicate orders and double charges. Need to atomically claim jobs.",
+      "root_cause_keywords": ["race", "condition", "lock", "fetch", "duplicate", "concurrent", "atomic", "claim", "multiple", "workers", "queue"],
+      "buggy_file": "order/queue.py",
+      "bug_line": 11,
+      "category": "race_condition"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom order.queue import JobQueue\n\ndef test_fetch_claims_job():\n    q = JobQueue()\n    q.add('job1', {'user_id': 'alice', 'amount': 49.99, 'items': ['shoe']})\n    \n    # First fetch should succeed\n    job1 = q.fetch('job1')\n    assert job1 is not None\n    \n    # Second fetch of SAME job should return None (already claimed)\n    job2 = q.fetch('job1')\n    assert job2 is None, 'Second fetch should return None — job already claimed'\n\ndef test_different_jobs_both_fetchable():\n    q = JobQueue()\n    q.add('job1', {'user_id': 'alice', 'amount': 10, 'items': []})\n    q.add('job2', {'user_id': 'bob', 'amount': 20, 'items': []})\n    assert q.fetch('job1') is not None\n    assert q.fetch('job2') is not None\n",
+    "solution_patch": {
+      "order/queue.py": "class JobQueue:\n    def __init__(self):\n        self.jobs = {}\n        self.acknowledged = set()\n        self.in_progress = set()\n\n    def add(self, job_id, data):\n        self.jobs[job_id] = data\n\n    def fetch(self, job_id):\n        if job_id in self.in_progress or job_id in self.acknowledged:\n            return None  # Already claimed\n        if job_id not in self.jobs:\n            return None\n        self.in_progress.add(job_id)\n        return self.jobs[job_id]\n\n    def acknowledge(self, job_id):\n        self.in_progress.discard(job_id)\n        self.acknowledged.add(job_id)\n"
+    }
+  },
+  {
+    "id": "h02_encoding_corruption",
+    "title": "Garbled customer names in export reports",
+    "difficulty": "hard",
+    "alert": {
+      "title": "\ud83d\udea8 DATA CORRUPTION: Export reports contain garbled text",
+      "description": "Daily customer export reports show corrupted names (e.g. 'MÃ¼ller' instead of 'Müller'). Affects ~15% of records. Finance team cannot process reports.",
+      "severity": "P2",
+      "affected_service": "export-service"
+    },
+    "services": ["export-service", "customer-db", "report-storage", "scheduler"],
+    "logs": {
+      "export-service": [
+        {"ts": "2026-04-03T02:00:01Z", "level": "INFO",  "msg": "Starting daily export: customers table"},
+        {"ts": "2026-04-03T02:00:30Z", "level": "INFO",  "msg": "Exported 50000 records to /reports/customers_20260403.csv"},
+        {"ts": "2026-04-03T02:00:31Z", "level": "INFO",  "msg": "Export complete. No errors detected."},
+        {"ts": "2026-04-03T08:00:00Z", "level": "WARN",  "msg": "Finance team reported garbled text in export file"}
+      ],
+      "customer-db": [
+        {"ts": "2026-04-03T02:00:00Z", "level": "INFO",  "msg": "Query: SELECT * FROM customers (encoding: UTF-8)"},
+        {"ts": "2026-04-03T02:00:00Z", "level": "INFO",  "msg": "Database charset: utf8mb4, returning UTF-8 encoded data"}
+      ],
+      "report-storage": [
+        {"ts": "2026-04-03T02:00:30Z", "level": "INFO",  "msg": "File written: customers_20260403.csv (2.3MB)"}
+      ],
+      "scheduler": [
+        {"ts": "2026-04-03T02:00:00Z", "level": "INFO",  "msg": "Triggered daily export job"}
+      ]
+    },
+    "metrics": {
+      "export_records":    {"unit": "count","values": [50000, 50000, 50000, 50000, 50000, 50000, 50000, 50000, 50000, 50000]},
+      "corrupted_records": {"unit": "count","values": [7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500, 7500]},
+      "export_time":       {"unit": "s",    "values": [30, 30, 30, 30, 30, 30, 30, 30, 30, 30]},
+      "error_rate":        {"unit": "%",    "values": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+    },
+    "source_files": {
+      "export/writer.py": "class CSVExporter:\n    def __init__(self, db):\n        self.db = db\n\n    def export_customers(self, output_path):\n        customers = self.db.fetch_all('SELECT * FROM customers')\n        # BUG: opens file with latin-1 encoding, but DB returns UTF-8\n        with open(output_path, 'w', encoding='latin-1') as f:\n            f.write('id,name,email\\n')\n            for c in customers:\n                f.write(f\"{c['id']},{c['name']},{c['email']}\\n\")\n        return len(customers)\n"
+    },
+    "configs": {
+      "show_config export-service": "output_dir=/reports\nformat=csv\nschedule=daily 02:00 UTC",
+      "show_config customer-db": "charset=utf8mb4\ncollation=utf8mb4_unicode_ci",
+      "show_recent_deploys": "v1.3.0  2026-04-01T10:00:00Z  export-service  (current)\nv1.2.9  2026-03-15T10:00:00Z  export-service",
+      "health_check export-service": "HEALTHY"
+    },
+    "ground_truth": {
+      "root_cause": "CSVExporter opens the output file with encoding='latin-1' (ISO-8859-1) but the database returns UTF-8 encoded data. When UTF-8 multi-byte characters (like ü, ö, é) are written with latin-1 encoding, they get corrupted. Should use encoding='utf-8'.",
+      "root_cause_keywords": ["encoding", "latin-1", "utf-8", "utf8", "charset", "ISO-8859", "unicode", "open", "export", "garbled"],
+      "buggy_file": "export/writer.py",
+      "bug_line": 8,
+      "category": "encoding_mismatch"
+    },
+    "test_code": "import sys, os, tempfile\nsys.path.insert(0, os.getcwd())\nfrom export.writer import CSVExporter\n\nclass MockDB:\n    def fetch_all(self, sql):\n        return [\n            {'id': 1, 'name': 'M\\u00fcller', 'email': 'mueller@test.com'},\n            {'id': 2, 'name': 'Ren\\u00e9', 'email': 'rene@test.com'},\n            {'id': 3, 'name': '\\u5c0f\\u6797', 'email': 'kobayashi@test.com'}\n        ]\n\ndef test_utf8_names_preserved():\n    db = MockDB()\n    exporter = CSVExporter(db)\n    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:\n        path = f.name\n    exporter.export_customers(path)\n    with open(path, 'r', encoding='utf-8') as f:\n        content = f.read()\n    os.unlink(path)\n    assert 'M\\u00fcller' in content, 'UTF-8 name M\\u00fcller should be preserved'\n    assert 'Ren\\u00e9' in content, 'UTF-8 name Ren\\u00e9 should be preserved'\n\ndef test_export_count():\n    db = MockDB()\n    exporter = CSVExporter(db)\n    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:\n        path = f.name\n    count = exporter.export_customers(path)\n    os.unlink(path)\n    assert count == 3\n",
+    "solution_patch": {
+      "export/writer.py": "class CSVExporter:\n    def __init__(self, db):\n        self.db = db\n\n    def export_customers(self, output_path):\n        customers = self.db.fetch_all('SELECT * FROM customers')\n        with open(output_path, 'w', encoding='utf-8') as f:\n            f.write('id,name,email\\n')\n            for c in customers:\n                f.write(f\"{c['id']},{c['name']},{c['email']}\\n\")\n        return len(customers)\n"
+    }
+  },
+  {
+    "id": "h03_jwt_clock_skew",
+    "title": "Random 401s from partner API calls",
+    "difficulty": "hard",
+    "alert": {
+      "title": "\ud83d\udea8 INTERMITTENT AUTH FAILURES: partner-gateway",
+      "description": "~30% of API calls to partner service returning 401 Unauthorized. JWT tokens appear valid but are rejected intermittently. Pattern is not user-specific.",
+      "severity": "P1",
+      "affected_service": "partner-gateway"
+    },
+    "services": ["partner-gateway", "token-service", "ntp-service", "monitoring"],
+    "logs": {
+      "partner-gateway": [
+        {"ts": "2026-04-03T10:00:01Z", "level": "ERROR", "msg": "Partner API returned 401: token not yet valid (nbf claim is in the future)"},
+        {"ts": "2026-04-03T10:00:02Z", "level": "INFO",  "msg": "Partner API returned 200 OK"},
+        {"ts": "2026-04-03T10:00:03Z", "level": "ERROR", "msg": "Partner API returned 401: token not yet valid"},
+        {"ts": "2026-04-03T10:00:04Z", "level": "INFO",  "msg": "Partner API returned 200 OK"},
+        {"ts": "2026-04-03T10:00:05Z", "level": "ERROR", "msg": "Partner API returned 401: token not yet valid (nbf claim is in the future)"}
+      ],
+      "token-service": [
+        {"ts": "2026-04-03T10:00:00Z", "level": "INFO",  "msg": "Generated JWT for partner-api: iat=1743674400, nbf=1743674400, exp=1743678000"},
+        {"ts": "2026-04-03T10:00:00Z", "level": "DEBUG", "msg": "Server time: 2026-04-03T10:00:00Z (local clock)"},
+        {"ts": "2026-04-03T10:00:01Z", "level": "DEBUG", "msg": "Token leeway: 0 seconds (strict validation)"}
+      ],
+      "ntp-service": [
+        {"ts": "2026-04-03T09:00:00Z", "level": "WARN",  "msg": "Clock sync failed for token-service host: NTP unreachable"},
+        {"ts": "2026-04-03T09:00:01Z", "level": "WARN",  "msg": "token-service clock drift: +90 seconds ahead of reference"},
+        {"ts": "2026-04-03T10:00:00Z", "level": "WARN",  "msg": "Clock drift persists: token-service is 90s ahead"}
+      ],
+      "monitoring": [
+        {"ts": "2026-04-03T10:00:00Z", "level": "WARN",  "msg": "Clock skew detected between token-service and partner endpoints"}
+      ]
+    },
+    "metrics": {
+      "auth_failure_rate":  {"unit": "%",    "values": [0, 5, 15, 25, 28, 30, 32, 30, 31, 30]},
+      "clock_drift":        {"unit": "s",    "values": [0, 10, 30, 50, 70, 85, 90, 90, 90, 90]},
+      "token_gen_rate":     {"unit": "rps",  "values": [20, 22, 25, 28, 30, 30, 32, 30, 31, 30]},
+      "partner_api_p99":    {"unit": "ms",   "values": [100, 120, 150, 200, 250, 300, 350, 400, 420, 450]},
+      "retry_rate":         {"unit": "%",    "values": [0, 5, 15, 25, 28, 30, 30, 30, 30, 30]}
+    },
+    "source_files": {
+      "token/generator.py": "import time\nimport json\nimport hashlib\nimport base64\n\nclass JWTGenerator:\n    def __init__(self, secret, ttl=3600):\n        self.secret = secret\n        self.ttl = ttl\n        self.leeway = 0  # BUG: no clock skew tolerance!\n\n    def generate(self, claims=None):\n        now = int(time.time())\n        payload = {\n            'iat': now,      # issued at\n            'nbf': now,      # not before (BUG: uses local clock, may be ahead)\n            'exp': now + self.ttl,\n            **(claims or {})\n        }\n        # Simplified JWT (not real crypto, for simulation)\n        header = base64.b64encode(json.dumps({'alg': 'HS256'}).encode()).decode()\n        body = base64.b64encode(json.dumps(payload).encode()).decode()\n        sig = hashlib.sha256(f'{header}.{body}.{self.secret}'.encode()).hexdigest()[:16]\n        return f'{header}.{body}.{sig}'\n\n    def decode(self, token):\n        parts = token.split('.')\n        payload = json.loads(base64.b64decode(parts[1]))\n        return payload\n"
+    },
+    "configs": {
+      "show_config token-service": "algorithm=HS256\nttl=3600s\nleeway=0s\nclock_sync=ntp (FAILED since 09:00)",
+      "show_config partner-gateway": "partner_url=https://partner.example.com\nauth=bearer_jwt\nretry=3",
+      "show_recent_deploys": "v1.0.0  2026-03-01T10:00:00Z  token-service  (no changes)",
+      "health_check token-service": "HEALTHY (but clock drift: +90s)"
+    },
+    "ground_truth": {
+      "root_cause": "The JWTGenerator sets nbf (not-before) using the local server clock, which is 90 seconds ahead due to NTP sync failure. Partner servers with correct time see the token's nbf as 90 seconds in the future and reject it with 'not yet valid'. Setting leeway=0 means no tolerance for clock skew. Fix: add a leeway/buffer to the nbf claim.",
+      "root_cause_keywords": ["clock", "skew", "drift", "nbf", "not before", "leeway", "NTP", "time", "future", "90s", "tolerance"],
+      "buggy_file": "token/generator.py",
+      "bug_line": 10,
+      "category": "clock_skew"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom token.generator import JWTGenerator\nimport time\n\ndef test_token_has_leeway():\n    gen = JWTGenerator(secret='test-secret')\n    token = gen.generate()\n    payload = gen.decode(token)\n    now = int(time.time())\n    # nbf should be at least 120s before now to handle clock skew\n    assert payload['nbf'] <= now - 60, f\"nbf ({payload['nbf']}) should have leeway before now ({now})\"\n\ndef test_token_structure():\n    gen = JWTGenerator(secret='test-secret')\n    token = gen.generate({'user': 'test'})\n    payload = gen.decode(token)\n    assert 'iat' in payload\n    assert 'exp' in payload\n    assert payload['user'] == 'test'\n",
+    "solution_patch": {
+      "token/generator.py": "import time\nimport json\nimport hashlib\nimport base64\n\nclass JWTGenerator:\n    def __init__(self, secret, ttl=3600, leeway=120):\n        self.secret = secret\n        self.ttl = ttl\n        self.leeway = leeway\n\n    def generate(self, claims=None):\n        now = int(time.time())\n        payload = {\n            'iat': now,\n            'nbf': now - self.leeway,  # subtract leeway for clock skew tolerance\n            'exp': now + self.ttl,\n            **(claims or {})\n        }\n        header = base64.b64encode(json.dumps({'alg': 'HS256'}).encode()).decode()\n        body = base64.b64encode(json.dumps(payload).encode()).decode()\n        sig = hashlib.sha256(f'{header}.{body}.{self.secret}'.encode()).hexdigest()[:16]\n        return f'{header}.{body}.{sig}'\n\n    def decode(self, token):\n        parts = token.split('.')\n        payload = json.loads(base64.b64decode(parts[1]))\n        return payload\n"
+    }
+  },
+  {
+    "id": "h04_silent_queue_drop",
+    "title": "Missing webhook delivery events",
+    "difficulty": "hard",
+    "alert": {
+      "title": "\ud83d\udea8 DATA LOSS: Webhook events missing",
+      "description": "Partners reporting ~5% of webhook events never received. Internal queue shows 0 errors. Events appear to vanish silently during traffic spikes.",
+      "severity": "P1",
+      "affected_service": "webhook-dispatcher"
+    },
+    "services": ["webhook-dispatcher", "event-queue", "api-ingest", "monitoring"],
+    "logs": {
+      "webhook-dispatcher": [
+        {"ts": "2026-04-03T20:00:01Z", "level": "INFO",  "msg": "Dispatched webhook event:5001 to https://partner.com/hook"},
+        {"ts": "2026-04-03T20:00:02Z", "level": "INFO",  "msg": "Dispatched webhook event:5002 to https://partner.com/hook"},
+        {"ts": "2026-04-03T20:00:05Z", "level": "INFO",  "msg": "Dispatched webhook event:5010 to https://partner.com/hook"},
+        {"ts": "2026-04-03T20:00:05Z", "level": "DEBUG", "msg": "Queue size: 1000/1000 (at capacity)"},
+        {"ts": "2026-04-03T20:00:06Z", "level": "DEBUG", "msg": "Queue size: 1000/1000 (at capacity)"}
+      ],
+      "event-queue": [
+        {"ts": "2026-04-03T20:00:05Z", "level": "DEBUG", "msg": "Buffer full (1000/1000). New events will be dropped silently."},
+        {"ts": "2026-04-03T20:00:06Z", "level": "DEBUG", "msg": "Dropped event:5050 (buffer full)"},
+        {"ts": "2026-04-03T20:00:07Z", "level": "DEBUG", "msg": "Dropped event:5051 (buffer full)"}
+      ],
+      "api-ingest": [
+        {"ts": "2026-04-03T20:00:00Z", "level": "INFO",  "msg": "Ingesting events at 200/s (spike from normal 50/s)"},
+        {"ts": "2026-04-03T20:00:05Z", "level": "INFO",  "msg": "Events ingested: 5060, Events queued: 1000"}
+      ],
+      "monitoring": [
+        {"ts": "2026-04-03T20:00:10Z", "level": "INFO",  "msg": "Queue error rate: 0% (no errors reported!)"},
+        {"ts": "2026-04-03T20:00:10Z", "level": "INFO",  "msg": "Events produced: 5060, Events consumed: 4800, Delta: 260"}
+      ]
+    },
+    "metrics": {
+      "events_produced":   {"unit": "count","values": [500, 800, 1500, 3000, 4200, 5060, 5800, 6500, 7000, 7400]},
+      "events_consumed":   {"unit": "count","values": [500, 800, 1450, 2800, 3900, 4800, 5500, 6100, 6600, 7000]},
+      "events_dropped":    {"unit": "count","values": [0, 0, 50, 200, 300, 260, 300, 400, 400, 400]},
+      "queue_size":        {"unit": "count","values": [50, 100, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]},
+      "ingest_rate":       {"unit": "eps",  "values": [50, 80, 150, 200, 200, 200, 200, 200, 200, 200]},
+      "error_rate":        {"unit": "%",    "values": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+    },
+    "source_files": {
+      "queue/buffer.py": "class EventBuffer:\n    def __init__(self, max_size=1000):\n        self.max_size = max_size\n        self.buffer = []\n        self.dropped_count = 0\n\n    def push(self, event):\n        if len(self.buffer) >= self.max_size:\n            # BUG: silently drops events, no error raised, no backpressure!\n            self.dropped_count += 1\n            return  # event vanishes\n        self.buffer.append(event)\n\n    def pop(self):\n        if self.buffer:\n            return self.buffer.pop(0)\n        return None\n\n    def size(self):\n        return len(self.buffer)\n"
+    },
+    "configs": {
+      "show_config event-queue": "max_buffer_size=1000\nbackpressure=disabled\ndrop_policy=silent\nerror_reporting=errors_only (drops not counted as errors)",
+      "show_recent_deploys": "v4.0.0  2026-03-20T10:00:00Z  webhook-dispatcher  (no recent changes)",
+      "health_check webhook-dispatcher": "HEALTHY (0 errors)"
+    },
+    "ground_truth": {
+      "root_cause": "EventBuffer.push() silently drops events when buffer is full (max_size=1000) without raising an error or applying backpressure. The dropped_count is incremented but never checked or reported. Monitoring only checks error_rate which stays at 0%. During traffic spikes, events silently vanish. Need to either raise an error, block, or implement backpressure.",
+      "root_cause_keywords": ["silent", "drop", "buffer", "full", "backpressure", "push", "max_size", "1000", "lost", "vanish", "EventBuffer"],
+      "buggy_file": "queue/buffer.py",
+      "bug_line": 9,
+      "category": "silent_data_loss"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom queue.buffer import EventBuffer\n\ndef test_buffer_full_raises_error():\n    buf = EventBuffer(max_size=5)\n    for i in range(5):\n        buf.push(f'event_{i}')\n    # Pushing to full buffer should raise, not silently drop\n    try:\n        buf.push('overflow_event')\n        # If we get here, check if event was actually stored or dropped\n        assert buf.size() > 5 or buf.dropped_count == 0, \\\n            'Buffer silently dropped event without raising error'\n    except BufferError:\n        pass  # This is the correct behavior\n\ndef test_buffer_normal_operation():\n    buf = EventBuffer(max_size=10)\n    for i in range(5):\n        buf.push(f'event_{i}')\n    assert buf.size() == 5\n    assert buf.pop() == 'event_0'\n    assert buf.size() == 4\n",
+    "solution_patch": {
+      "queue/buffer.py": "class EventBuffer:\n    def __init__(self, max_size=1000):\n        self.max_size = max_size\n        self.buffer = []\n        self.dropped_count = 0\n\n    def push(self, event):\n        if len(self.buffer) >= self.max_size:\n            self.dropped_count += 1\n            raise BufferError(\n                f'Event buffer full ({self.max_size}). '\n                f'Total dropped: {self.dropped_count}. '\n                'Apply backpressure or increase buffer size.'\n            )\n        self.buffer.append(event)\n\n    def pop(self):\n        if self.buffer:\n            return self.buffer.pop(0)\n        return None\n\n    def size(self):\n        return len(self.buffer)\n"
+    }
+  },
+  {
+    "id": "h05_cache_stampede",
+    "title": "Database overwhelmed after cache TTL expiry",
+    "difficulty": "hard",
+    "alert": {
+      "title": "\ud83d\udea8 DB OVERLOAD: Thundering herd after cache expiry",
+      "description": "Product catalog DB CPU at 100%, connection pool exhausted. All 50,000 cached product keys expired simultaneously. Every request hitting DB directly.",
+      "severity": "P1",
+      "affected_service": "catalog-service"
+    },
+    "services": ["catalog-service", "catalog-cache", "catalog-db", "gateway"],
+    "logs": {
+      "catalog-service": [
+        {"ts": "2026-04-03T00:00:01Z", "level": "WARN",  "msg": "Cache MISS for product:1 (TTL expired)"},
+        {"ts": "2026-04-03T00:00:01Z", "level": "WARN",  "msg": "Cache MISS for product:2 (TTL expired)"},
+        {"ts": "2026-04-03T00:00:01Z", "level": "WARN",  "msg": "Cache MISS for product:3 (TTL expired)"},
+        {"ts": "2026-04-03T00:00:02Z", "level": "ERROR", "msg": "DB connection pool exhausted — 500 pending requests"},
+        {"ts": "2026-04-03T00:00:05Z", "level": "ERROR", "msg": "GET /products/123 timeout: DB unreachable"},
+        {"ts": "2026-04-03T00:00:10Z", "level": "WARN",  "msg": "10,000 concurrent DB queries from cache misses"}
+      ],
+      "catalog-cache": [
+        {"ts": "2026-04-03T00:00:00Z", "level": "INFO",  "msg": "TTL expiry: 50,000 keys expired (all set with same TTL at last cache warm)"},
+        {"ts": "2026-04-03T00:00:01Z", "level": "INFO",  "msg": "Active keys: 0 (was 50,000)"}
+      ],
+      "catalog-db": [
+        {"ts": "2026-04-03T00:00:01Z", "level": "ERROR", "msg": "Connection pool: 100/100 active, 500 waiting"},
+        {"ts": "2026-04-03T00:00:02Z", "level": "ERROR", "msg": "CPU at 100%, query throughput degraded 10x"}
+      ],
+      "gateway": [
+        {"ts": "2026-04-03T00:00:05Z", "level": "ERROR", "msg": "catalog-service: 503 (80% of requests failing)"}
+      ]
+    },
+    "metrics": {
+      "cache_hit_rate":   {"unit": "%",    "values": [99, 99, 99, 0, 5, 10, 15, 20, 25, 30]},
+      "db_connections":   {"unit": "count","values": [10, 10, 10, 100, 100, 100, 100, 100, 100, 100]},
+      "db_cpu":           {"unit": "%",    "values": [15, 15, 15, 100, 100, 100, 100, 100, 100, 95]},
+      "error_rate":       {"unit": "%",    "values": [0, 0, 0, 60, 75, 80, 70, 60, 50, 40]},
+      "response_time":    {"unit": "ms",   "values": [10, 10, 10, 30000, 30000, 30000, 25000, 20000, 15000, 10000]},
+      "cache_keys":       {"unit": "count","values": [50000, 50000, 50000, 0, 500, 1000, 2000, 5000, 10000, 15000]}
+    },
+    "source_files": {
+      "catalog/cache.py": "import time\n\nclass CatalogCache:\n    def __init__(self, store, db, default_ttl=3600):\n        self.store = store\n        self.db = db\n        self.default_ttl = default_ttl\n\n    def get_product(self, product_id):\n        key = f'product:{product_id}'\n        cached = self.store.get(key)\n        if cached is not None:\n            return cached\n        \n        # Cache miss — fetch from DB (no stampede protection!)\n        product = self.db.fetch_product(product_id)\n        # BUG: all keys get the SAME TTL, so they all expire at once\n        self.store.set(key, product, ttl=self.default_ttl)\n        return product\n\n    def warm_cache(self, product_ids):\n        for pid in product_ids:\n            product = self.db.fetch_product(pid)\n            # All warmed at the same time with same TTL = simultaneous expiry!\n            self.store.set(f'product:{pid}', product, ttl=self.default_ttl)\n"
+    },
+    "configs": {
+      "show_config catalog-cache": "default_ttl=3600\ncache_size=100000\neviction=lru",
+      "show_config catalog-db": "max_connections=100\nquery_timeout=30s",
+      "show_recent_deploys": "v2.1.0  2026-04-02T00:00:00Z  catalog-service  (last cache warm at deploy time)\nv2.0.9  2026-03-30T10:00:00Z  catalog-service",
+      "health_check catalog-service": "UNHEALTHY - DB overload, high error rate"
+    },
+    "ground_truth": {
+      "root_cause": "CatalogCache uses a fixed TTL (3600s) for all keys. When cache is warmed at deploy time, all 50,000 keys expire simultaneously after exactly 1 hour, causing a thundering herd: every request hits the DB at once. Fix: add random jitter to TTL to stagger expiration.",
+      "root_cause_keywords": ["stampede", "thundering", "herd", "TTL", "jitter", "simultaneous", "expiry", "expire", "same time", "random", "stagger"],
+      "buggy_file": "catalog/cache.py",
+      "bug_line": 19,
+      "category": "cache_stampede"
+    },
+    "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom catalog.cache import CatalogCache\n\nclass MockStore:\n    def __init__(self):\n        self.data = {}\n        self.ttls = {}\n    def get(self, key):\n        return self.data.get(key)\n    def set(self, key, value, ttl):\n        self.data[key] = value\n        self.ttls[key] = ttl\n\nclass MockDB:\n    def fetch_product(self, pid):\n        return {'id': pid, 'name': f'Product {pid}'}\n\ndef test_ttl_has_jitter():\n    store = MockStore()\n    db = MockDB()\n    cache = CatalogCache(store, db, default_ttl=3600)\n    # Warm multiple products\n    cache.warm_cache(list(range(100)))\n    ttls = list(store.ttls.values())\n    unique_ttls = set(ttls)\n    # With jitter, we should have multiple different TTLs\n    assert len(unique_ttls) > 1, f'All {len(ttls)} keys have same TTL ({ttls[0]}s) — stampede risk!'\n\ndef test_get_product_works():\n    store = MockStore()\n    db = MockDB()\n    cache = CatalogCache(store, db)\n    product = cache.get_product(42)\n    assert product['id'] == 42\n",
+    "solution_patch": {
+      "catalog/cache.py": "import time\nimport random\n\nclass CatalogCache:\n    def __init__(self, store, db, default_ttl=3600, jitter_pct=0.2):\n        self.store = store\n        self.db = db\n        self.default_ttl = default_ttl\n        self.jitter_pct = jitter_pct\n\n    def _jittered_ttl(self):\n        jitter = int(self.default_ttl * self.jitter_pct * random.random())\n        return self.default_ttl + jitter\n\n    def get_product(self, product_id):\n        key = f'product:{product_id}'\n        cached = self.store.get(key)\n        if cached is not None:\n            return cached\n        product = self.db.fetch_product(product_id)\n        self.store.set(key, product, ttl=self._jittered_ttl())\n        return product\n\n    def warm_cache(self, product_ids):\n        for pid in product_ids:\n            product = self.db.fetch_product(pid)\n            self.store.set(f'product:{pid}', product, ttl=self._jittered_ttl())\n"
+    }
+  }
+]
