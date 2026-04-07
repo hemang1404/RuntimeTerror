@@ -12,7 +12,7 @@ try:
     from openenv.core.env_server.http_server import create_app
 
     from .incident_environment import IncidentEnvironment
-    from ..models import IncidentAction, IncidentObservation
+    from models import IncidentAction, IncidentObservation
 
     app = create_app(
         IncidentEnvironment,
@@ -53,7 +53,7 @@ except ImportError:
 
     @app.get("/schema")
     async def schema():
-        from ..models import IncidentAction, IncidentObservation, IncidentState
+        from models import IncidentAction, IncidentObservation, IncidentState
         return JSONResponse({
             "action": IncidentAction.model_json_schema(),
             "observation": IncidentObservation.model_json_schema(),

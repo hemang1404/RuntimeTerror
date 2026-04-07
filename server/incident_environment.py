@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from ..models import IncidentAction, IncidentObservation, IncidentState
+from models import IncidentAction, IncidentObservation, IncidentState
 
 from .executor import CodeExecutor, ExecutionResult
 from .rewards import (
