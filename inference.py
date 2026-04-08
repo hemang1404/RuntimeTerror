@@ -23,7 +23,7 @@ from openai import OpenAI
 # Required env vars for submission
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
 ENV_URL = os.getenv("ENV_URL", "http://localhost:8000")
 
 BENCHMARK = os.getenv("BENCHMARK", "incident_env")
@@ -112,10 +112,10 @@ def clamp01(value: float) -> float:
 
 
 def get_llm_client() -> OpenAI:
-    if not HF_TOKEN:
+    if not API_KEY:
         # Keep OpenAI client usage while allowing fallback policy when token is missing.
         return OpenAI(base_url=API_BASE_URL, api_key="missing-token")
-    return OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
 
 def call_llm(client: OpenAI, prompt: str, system: str = "") -> dict[str, Any]:
