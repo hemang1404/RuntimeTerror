@@ -240,13 +240,23 @@ python inference.py --episodes 3             # 3 episodes per task
 
 ## Baseline Scores
 
-| Task | Model | Avg Score | Episodes |
-|------|-------|-----------|----------|
-| `easy_triage` | gpt-4o-mini | ~0.65 | 3 |
-| `medium_triage` | gpt-4o-mini | ~0.45 | 3 |
-| `hard_triage` | gpt-4o-mini | ~0.25 | 3 |
+Latest measured runs (HF Space deployment):
 
-*(Scores are approximate — run `inference.py` to reproduce)*
+| Task | Model | Avg Score | Episodes | Notes |
+|------|-------|-----------|----------|-------|
+| `easy_triage` | `Qwen/Qwen2.5-7B-Instruct` | `0.4256` | `3` | Episode 1 reached `0.7767`; later episodes degraded due to exhausted provider credits |
+| `easy_triage` | `Qwen/Qwen2.5-7B-Instruct` | `0.1500` | `1` | Earlier baseline before policy improvements |
+
+Reproduce with:
+
+```bash
+export ENV_URL="https://hemang1404-runtimeterror.hf.space"
+export API_BASE_URL="https://router.huggingface.co/v1"
+export MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
+export HF_TOKEN="hf_xxxxxxxxxxxxxxxx"
+
+python inference.py --task easy_triage --episodes 3
+```
 
 ---
 
