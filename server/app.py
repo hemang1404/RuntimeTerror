@@ -7,8 +7,15 @@ with the OpenEnv client ecosystem (MCPToolClient, EnvClient, etc.).
 
 from __future__ import annotations
 
-# Support both in-repo (openenv) and standalone imports
-try:
+import os
+
+# Support both in-repo (openenv) and standalone imports.
+# The openenv-core HTTP server can run without per-client session isolation,
+# which breaks this environment's stateful reset->step lifecycle on Spaces.
+# Default to the explicit session-based fallback unless opted in.
+USE_OPENENV_CORE_SERVER = os.getenv("USE_OPENENV_CORE_SERVER", "0") == "1"
+
+if USE_OPENENV_CORE_SERVER:
     from openenv.core.env_server.http_server import create_app
 
     from .incident_environment import IncidentEnvironment
@@ -21,7 +28,7 @@ try:
         env_name="incident_env",
     )
 
-except ImportError:
+else:
     # ── Standalone FastAPI fallback (works without openenv-core) ──
     import json
     import uuid

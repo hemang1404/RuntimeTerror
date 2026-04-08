@@ -140,6 +140,7 @@ class EnvClient:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         self.session_id: str | None = None
+        self._use_session_routes = True
         self._http = requests.Session()
 
     def reset(self, **kwargs) -> dict:
@@ -147,19 +148,29 @@ class EnvClient:
         resp.raise_for_status()
         data = resp.json()
         self.session_id = data.get("session_id")
+        # Support both APIs:
+        # 1) /step/{session_id}, /state/{session_id}
+        # 2) /step, /state
+        self._use_session_routes = bool(self.session_id)
         return data.get("observation", data)
 
     def step(self, action: dict) -> dict:
-        assert self.session_id
-        resp = self._http.post(
-            f"{self.base_url}/step/{self.session_id}", json=action
-        )
+        if self._use_session_routes:
+            assert self.session_id
+            resp = self._http.post(
+                f"{self.base_url}/step/{self.session_id}", json=action
+            )
+        else:
+            resp = self._http.post(f"{self.base_url}/step", json={"action": action})
         resp.raise_for_status()
         return resp.json()
 
     def state(self) -> dict:
-        assert self.session_id
-        resp = self._http.get(f"{self.base_url}/state/{self.session_id}")
+        if self._use_session_routes:
+            assert self.session_id
+            resp = self._http.get(f"{self.base_url}/state/{self.session_id}")
+        else:
+            resp = self._http.get(f"{self.base_url}/state")
         resp.raise_for_status()
         return resp.json()
 
