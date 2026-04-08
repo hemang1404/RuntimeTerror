@@ -1,19 +1,3 @@
----
-title: RuntimeTerror IncidentEnv
-emoji: 🚨
-colorFrom: red
-colorTo: yellow
-sdk: docker
-app_port: 7860
-tags:
-  - openenv
-  - reinforcement-learning
-  - agent
-  - incident-response
-  - benchmark
-license: mit
----
-
 # IncidentEnv — AI On-Call Incident Response Environment
 
 > **An AI agent receives a production alert, investigates using diagnostic tools, identifies the root cause, and submits a code fix — validated by actual test execution.**
