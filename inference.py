@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NitpickAI — Submission Inference Script.
+RuntimeTerror — Submission Inference Script.
 
 MANDATORY ENV VARS
     API_BASE_URL   The API endpoint for the LLM.
@@ -8,7 +8,7 @@ MANDATORY ENV VARS
     HF_TOKEN       Your Hugging Face / API key.
 
 STDOUT FORMAT
-    [START] task=<task_name> env=nitpick_ai model=<model_name>
+    [START] task=<task_name> env=runtime_terror model=<model_name>
     [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
     [END]   success=<true|false> steps=<n> score=<0.00> rewards=<r1,r2,...,rn>
 """
@@ -31,7 +31,7 @@ MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 
-BENCHMARK = "nitpick_ai"
+BENCHMARK = "runtime_terror"
 TASKS = ["easy_debug", "medium_debug", "hard_debug"]
 SUCCESS_SCORE_THRESHOLD = float(os.getenv("SUCCESS_SCORE_THRESHOLD", "0.3"))
 
@@ -67,7 +67,7 @@ def clamp01(value: float) -> float:
 
 
 class EnvClient:
-    """Minimal HTTP client for the NitpickAI environment server."""
+    """Minimal HTTP client for the RuntimeTerror environment server."""
 
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
