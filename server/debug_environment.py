@@ -1,5 +1,5 @@
 """
-NitpickAI — Core Debugging Environment.
+RuntimeTerror — Core Debugging Environment.
 
 Single-phase iterative debugging loop:
   Agent receives buggy code + visible tests, runs code, identifies bug,
