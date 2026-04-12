@@ -28,8 +28,8 @@ import requests
 # ── Environment Configuration ────────────────────────────────────
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-API_KEY = os.environ.get("API_KEY", os.environ.get("HF_TOKEN", "missing-token"))
-ENV_URL = os.environ.get("ENV_URL", "http://localhost:7860")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN")
+ENV_URL = os.environ.get("ENV_URL", "http://localhost:8000")
 
 BENCHMARK = "runtime_terror"
 TASKS = ["easy_debug", "medium_debug", "hard_debug"]

@@ -17,8 +17,9 @@ COPY . /app
 # Set PYTHONPATH so server imports work correctly
 ENV PYTHONPATH="/app:$PYTHONPATH"
 
-# Expose port 7860 (required by Hugging Face Spaces)
-EXPOSE 7860
+# Expose port 8000 (required by Hackathon Validator)
+EXPOSE 8000
 
-# Run the FastAPI server on port 7860
-CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]
+# Run the FastAPI server on port 8000
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
+
