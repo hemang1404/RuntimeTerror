@@ -58,6 +58,27 @@ async def reset_endpoint(body: dict[str, Any] | None = None):
     })
 
 
+@app.post("/pr/fetch")
+async def pr_fetch_endpoint(body: dict[str, Any] | None = None):
+    body = body or {}
+    pr_url = body.get("url")
+    if not pr_url:
+        return JSONResponse({"error": "Missing 'url' parameter"}, status_code=400)
+        
+    from agent.pr_environment import PREnvironment
+    env = PREnvironment()
+    session_id = str(uuid.uuid4())
+    _sessions[session_id] = env
+    try:
+        obs = env.reset(pr_url=pr_url)
+        return JSONResponse({
+            "session_id": session_id,
+            "observation": obs.model_dump(),
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/step/{session_id}")
 async def step_endpoint(session_id: str, body: dict[str, Any]):
     env = _sessions.get(session_id)
@@ -94,24 +115,42 @@ async def ai_suggest_endpoint(session_id: str):
         test_results="",
         reward=0.0,
         done=False,
-        action_feedback="AI analyzing current state..."
+        action_feedback="AI compiling PR Review..."
     )
     
     from agent.llm_agent import LLMAgent
     try:
         agent = LLMAgent()
-        action = agent.act(obs.model_dump())
-        atype = action.get("action_type", "unknown")
+        initial_action = agent.act(obs.model_dump())
+        atype = initial_action.get("action_type", "unknown")
         
-        explanation = f"AI computed optimal next move: {atype}"
         if atype == "suggest_fix":
-            explanation = "AI identified a bug and synthesized a code patch. Submitting fix now..."
-        elif atype == "create_issue":
-            explanation = f"AI Analysis: {action.get('issue_description')}"
-        elif atype == "run_code":
-            explanation = "AI requests to run exploratory code snippet to investigate state."
+            patch = initial_action.get("patch_code", "")
+            # Auto-apply the patch in the backend to grab test results
+            test_obs = env.step({"action_type": "suggest_fix", "patch_code": patch})
             
-        return JSONResponse({"suggestion": action, "explanation": explanation})
+            passed = test_obs.tests_passed
+            tests_summary = "✅ All tests successfully passed." if passed else "❌ Tests failed with this patch."
+            
+            review_comment = {
+                "issue_found": "Identified logical defect based on context execution and trace evaluation.",
+                "suggested_fix": patch,
+                "test_results": f"{tests_summary}\n\nLog:\n{test_obs.test_results}"
+            }
+            return JSONResponse({"suggestion": review_comment, "explanation": "AI generated a Code Review."})
+            
+        elif atype == "create_issue":
+            review_comment = {
+                "issue_found": initial_action.get("issue_description", "No explicit issue description."),
+                "suggested_fix": "No patch available yet.",
+                "test_results": "⚠️ N/A - requires exploratory fixes."
+            }
+            return JSONResponse({"suggestion": review_comment, "explanation": "AI identified an issue without a patch."})
+        else:
+            # Need exploratory execution? We simulate doing it internally or just return the output
+            exec_obs = env.step(initial_action)
+            return JSONResponse({"suggestion": None, "explanation": f"AI needs more context. It ran: {atype}. Internal state advanced."})
+            
     except Exception as e:
         import traceback
         return JSONResponse({"suggestion": None, "explanation": f"AI error: {str(e)}"}, status_code=500)

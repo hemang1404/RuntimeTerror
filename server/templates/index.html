@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RuntimeTerror — Interactive Debugging Benchmark</title>
+    <title>RuntimeTerror — AI PR Review Platform</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -27,6 +27,8 @@
                         accentHover: '#2563eb',
                         danger: '#ef4444',
                         success: '#10b981',
+                        githubBg: '#0d1117',
+                        githubBorder: '#30363d',
                     }
                 }
             }
@@ -42,7 +44,6 @@
         .panel { background: #111111; border: 1px solid #2a2a2a; border-radius: 8px; }
         textarea.code-font { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: #e2e8f0; background: #0a0a0a; border: 1px solid #2a2a2a; resize: none; border-radius: 6px; padding: 12px; outline: none; }
         textarea.code-font:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
-        
         pre.code-font { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: #e2e8f0; background: #0a0a0a; border: 1px solid #2a2a2a; padding: 12px; border-radius: 6px; white-space: pre-wrap; overflow-y: auto;}
 
         .btn { padding: 8px 16px; border-radius: 6px; font-weight: 500; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; cursor: pointer; border: 1px solid transparent; }
@@ -60,6 +61,12 @@
 
         .spinner { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* GitHub Comment Styling */
+        .github-comment { background: var(--githubBg); border: 1px solid var(--githubBorder); border-radius: 6px; overflow: hidden; }
+        .github-comment-header { background: #161b22; border-bottom: 1px solid var(--githubBorder); padding: 8px 16px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+        .github-comment-body { padding: 16px; font-size: 14px; color: #c9d1d9; }
+        .github-code-block { background: #161b22; border: 1px solid var(--githubBorder); border-radius: 6px; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px; margin: 12px 0; overflow-x: auto; color: #e5e5e5; }
     </style>
 </head>
 <body class="h-screen flex flex-col font-sans">
@@ -67,40 +74,20 @@
     <div id="toast"><i data-lucide="info"></i><span id="toast-msg"></span></div>
 
     <!-- Header -->
-    <header class="h-14 border-b border-border flex items-center justify-between px-6 shrink-0 bg-surface z-10 w-full relative">
-        <div class="flex items-center gap-4">
+    <header class="h-14 border-b border-border flex items-center px-6 shrink-0 bg-surface z-10 w-full relative">
+        <div class="flex items-center gap-4 border-r border-border pr-6">
             <div class="h-6 w-6 bg-accent rounded shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
-            <h1 class="text-textPrimary font-semibold text-sm mr-4 tracking-wide">RuntimeTerror</h1>
-            
-            <div class="flex items-center gap-2 border-l border-border pl-4">
-                <span class="text-textSecondary text-xs font-medium uppercase tracking-wider">Task</span>
-                <select id="taskSelect" class="bg-background border border-border text-xs rounded px-2 py-1 outline-none text-textPrimary hover:border-textSecondary transition-colors cursor-pointer w-40">
-                    <option value="easy_debug">easy_debug</option>
-                    <option value="medium_debug">medium_debug</option>
-                    <option value="hard_debug">hard_debug</option>
-                </select>
-                <button id="resetBtn" class="btn btn-secondary !py-1 !px-3 !text-xs !bg-background ml-2">
-                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Initialize
-                </button>
-            </div>
+            <h1 class="text-textPrimary font-semibold text-sm tracking-wide">RuntimeTerror</h1>
         </div>
-
-        <div class="flex items-center gap-6">
-            <div class="flex items-center gap-2 text-xs">
-                <span class="text-textSecondary">State:</span>
-                <span id="stateStatus" class="flex items-center gap-1 text-danger font-medium"><div class="w-2 h-2 rounded-full bg-danger"></div> Uninitialized</span>
-            </div>
-            <div class="flex items-center gap-2 text-xs border-l border-border pl-6">
-                <span class="text-textSecondary">Score:</span>
-                <span id="scoreDisplay" class="font-mono text-success font-medium">0.00</span>
-            </div>
-            <div class="flex items-center gap-2 text-xs">
-                <span class="text-textSecondary">Step:</span>
-                <span id="stepDisplay" class="font-mono text-textPrimary">0/20</span>
-            </div>
-            <div class="flex items-center gap-2 text-xs">
-                <span class="text-textSecondary">Reward:</span>
-                <span id="rewardDisplay" class="font-mono text-accent">0.00</span>
+        
+        <div class="flex items-center gap-3 pl-6 w-full max-w-3xl">
+            <i data-lucide="git-pull-request" class="w-4 h-4 text-textSecondary"></i>
+            <input type="text" id="prUrlInput" value="https://github.com/pallets/click/pull/2224" class="bg-background border border-border text-sm rounded-lg px-3 py-1.5 outline-none text-textPrimary hover:border-textSecondary focus:border-accent transition-colors w-[400px]" placeholder="Paste GitHub PR URL..." />
+            <button id="fetchPrBtn" class="btn btn-secondary !py-1.5 !px-4 !text-sm !bg-background ml-2">
+                Init PR Workspace
+            </button>
+            <div id="statusIndicator" class="ml-4 flex items-center gap-2 text-xs">
+                <span id="stateStatus" class="flex items-center gap-1 text-danger font-medium"><div class="w-2 h-2 rounded-full bg-danger"></div> Missing PR</span>
             </div>
         </div>
     </header>
@@ -108,72 +95,62 @@
     <!-- Main Content Split -->
     <main class="flex-1 flex overflow-hidden">
         
-        <!-- Left Pane (Editor) -->
+        <!-- Left Pane (PR Context) -->
         <div class="w-1/2 flex flex-col border-r border-border bg-background relative">
             <div class="h-10 border-b border-border bg-surface flex items-center px-4 shrink-0 justify-between">
                 <div class="flex items-center gap-2">
                     <i data-lucide="file-code" class="w-4 h-4 text-textSecondary"></i>
-                    <span class="text-xs font-semibold text-textSecondary tracking-wide uppercase">Source Code</span>
+                    <span class="text-xs font-semibold text-textSecondary tracking-wide uppercase">PR Source Sandbox</span>
                 </div>
-                <div id="fileTypeTag" class="tag hidden">Python</div>
+                <div id="prInfoTag" class="tag hidden">Tests: Found</div>
             </div>
             <div class="flex-1 p-4 relative flex flex-col">
-                <textarea id="codeEditor" spellcheck="false" class="code-font flex-1 custom-scrollbar w-full h-full" placeholder="Initialize a task to load source code..."></textarea>
+                <textarea id="codeEditor" spellcheck="false" class="code-font flex-1 custom-scrollbar w-full h-full" placeholder="Fetch a PR to load the repository execution environment..."></textarea>
             </div>
         </div>
 
-        <!-- Right Pane (Outputs & AI) -->
+        <!-- Right Pane (AI Review Flow) -->
         <div class="w-1/2 flex flex-col bg-[#0d0d0d] custom-scrollbar overflow-y-auto">
-            
             <div class="p-6 flex flex-col gap-6">
-                <!-- Visible Tests -->
-                <div class="panel flex flex-col">
-                    <div class="h-9 border-b border-border bg-surface flex items-center px-4 shrink-0 rounded-t-lg">
-                        <span class="text-xs font-semibold text-textPrimary flex items-center gap-2">
-                            <i data-lucide="flask-conical" class="w-4 h-4 text-accent"></i> Visible Test Suite
-                        </span>
-                    </div>
-                    <div class="p-4">
-                        <pre id="testsOutput" class="code-font max-h-[150px] custom-scrollbar text-textSecondary border-none !p-0 !bg-transparent">Waiting for task initialization...</pre>
-                    </div>
+                
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-textPrimary">Auto-Review Pipeline</h2>
+                    <button id="askAiBtn" class="btn btn-secondary border-accent text-[#8b9cf6] hover:bg-accent/10 shadow-[0_0_15px_rgba(59,130,246,0.15)]" disabled>
+                        <i data-lucide="sparkles" class="w-4 h-4 text-accent"></i> Analyze PR
+                    </button>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <!-- Execution Output -->
-                    <div class="panel flex flex-col">
-                        <div class="h-9 border-b border-border bg-surface flex items-center px-4 shrink-0 rounded-t-lg">
-                            <span class="text-xs font-semibold text-textPrimary flex items-center gap-2">
-                                <i data-lucide="terminal" class="w-4 h-4 text-textSecondary"></i> Execution Log
-                            </span>
-                        </div>
-                        <div class="p-4">
-                            <pre id="execOutput" class="code-font h-[150px] custom-scrollbar border-none !p-0 !bg-transparent text-[#e5e5e5]">—</pre>
-                        </div>
-                    </div>
+                <!-- Status Feedback -->
+                <p id="actionFeedback" class="text-sm text-textSecondary leading-relaxed bg-[#111111] p-4 rounded-lg border border-[#2a2a2a]">Waiting for PR to be fetched...</p>
 
-                    <!-- Test Results -->
-                    <div class="panel flex flex-col">
-                        <div class="h-9 border-b border-border bg-surface flex items-center px-4 shrink-0 rounded-t-lg">
-                            <span class="text-xs font-semibold text-textPrimary flex items-center gap-2">
-                                <i data-lucide="activity" class="w-4 h-4 text-textSecondary"></i> Test Results
-                            </span>
+                <!-- GitHub Suggested Review Comment Box -->
+                <div id="reviewBox" class="hidden flex flex-col gap-3">
+                    <h3 class="text-sm font-medium text-textSecondary uppercase tracking-wider">Draft Review Comment</h3>
+                    
+                    <div class="github-comment">
+                        <div class="github-comment-header">
+                            <i data-lucide="bot" class="w-4 h-4"></i>
+                            <span class="font-semibold text-white">runtimeterror-bot</span> commented just now
                         </div>
-                        <div class="p-4">
-                            <pre id="testResultsOutput" class="code-font h-[150px] custom-scrollbar border-none !p-0 !bg-transparent text-[#e5e5e5]">—</pre>
+                        <div class="github-comment-body">
+                            <p class="mb-4">Hello! I've analyzed this PR. Here is my review:</p>
+                            
+                            <h4 class="font-semibold text-white mb-2">🐛 Issue Identified</h4>
+                            <p id="reviewIssue" class="mb-4 text-sm"></p>
+                            
+                            <h4 class="font-semibold text-white mb-2">💡 Suggested Patch</h4>
+                            <p class="text-sm mb-2">I recommend the following modifications to resolve the underlying failure:</p>
+                            <pre id="reviewPatch" class="github-code-block"></pre>
+                            
+                            <h4 class="font-semibold text-white mb-2">🧪 Test Verification</h4>
+                            <pre id="reviewTests" class="github-code-block text-xs !bg-[#000000] !border-border"></pre>
                         </div>
                     </div>
-                </div>
-
-                <!-- AI Suggestions / Feedback -->
-                <div class="panel flex flex-col border border-accent/20">
-                    <div class="h-9 border-b border-accent/10 bg-[#161b22] flex items-center px-4 shrink-0 rounded-t-lg justify-between">
-                        <span class="text-xs font-semibold text-[#8b9cf6] flex items-center gap-2">
-                            <i data-lucide="sparkles" class="w-4 h-4"></i> System Feedback
-                        </span>
-                        <div id="feedbackTag" class="tag !bg-[#312e81] !text-[#8b9cf6] hidden">Update</div>
-                    </div>
-                    <div class="p-4">
-                        <p id="actionFeedback" class="text-sm text-textSecondary leading-relaxed">System feedback and scores will appear here after taking actions.</p>
+                    
+                    <div class="flex justify-end mt-2">
+                        <button id="postCommentBtn" class="btn btn-primary bg-success hover:bg-[#059669] text-white !border-none shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+                            <i data-lucide="send" class="w-4 h-4"></i> Post Comment & Approve
+                        </button>
                     </div>
                 </div>
 
@@ -181,116 +158,26 @@
         </div>
     </main>
 
-    <!-- Sticky Bottom Action Bar -->
-    <footer class="h-16 border-t border-border bg-surface shrink-0 flex items-center px-6 justify-between shadow-[0_-4px_20px_rgba(0,0,0,0.5)] z-20">
-        
-        <div class="flex items-center gap-6">
-            <div class="flex items-center gap-2">
-                <span class="flex items-center justify-center w-5 h-5 rounded-full bg-border text-[10px] font-bold text-textSecondary" id="stepIndicator1">1</span>
-                <span class="text-xs text-textSecondary font-medium">Inspect</span>
-            </div>
-            <div class="w-4 h-[1px] bg-border"></div>
-            <div class="flex items-center gap-2">
-                <span class="flex items-center justify-center w-5 h-5 rounded-full bg-border text-[10px] font-bold text-textSecondary" id="stepIndicator2">2</span>
-                <span class="text-xs text-textSecondary font-medium">Diagnose</span>
-            </div>
-            <div class="w-4 h-[1px] bg-border"></div>
-            <div class="flex items-center gap-2">
-                <span class="flex items-center justify-center w-5 h-5 rounded-full bg-border text-[10px] font-bold text-textSecondary" id="stepIndicator3">3</span>
-                <span class="text-xs text-textSecondary font-medium">Fix & Finalize</span>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-3">
-            <button id="runSnippetBtn" class="btn btn-secondary" disabled>
-                <i data-lucide="play" class="w-4 h-4 text-accent"></i> Run Snippet
-            </button>
-            <button id="runTestsBtn" class="btn btn-secondary" disabled>
-                <i data-lucide="beaker" class="w-4 h-4 text-[#a78bfa]"></i> Run Tests
-            </button>
-            <div class="w-[1px] h-6 bg-border mx-2"></div>
-            <button id="submitBugBtn" class="btn btn-secondary" disabled>
-                <i data-lucide="bug" class="w-4 h-4 text-danger"></i> Flag Issue
-            </button>
-            <button id="submitFixBtn" class="btn btn-primary" disabled>
-                <i data-lucide="wrench" class="w-4 h-4"></i> Submit Fix
-            </button>
-            <div class="w-[1px] h-6 bg-border mx-2"></div>
-            <button id="askAiBtn" class="btn btn-secondary border-accent text-[#8b9cf6] hover:bg-accent/10" disabled>
-                <i data-lucide="sparkles" class="w-4 h-4 text-accent"></i> Ask AI
-            </button>
-        </div>
-    </footer>
-
-    <!-- Overlay Modals -->
-    <!-- Run Snippet Modal -->
-    <div id="snippetModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center shadow-2xl transition-opacity">
-        <div class="bg-surface border border-border w-[600px] rounded-xl flex flex-col transform transition-transform scale-95 p-6 relative">
-            <button class="absolute top-4 right-4 text-textSecondary hover:text-textPrimary" onclick="closeModal('snippetModal')">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-            <h2 class="text-lg font-semibold text-textPrimary mb-2">Run Code Snippet</h2>
-            <p class="text-sm text-textSecondary mb-4">Execute a standalone python snippet. Use <code>from source import *</code> to access current code.</p>
-            <textarea id="snippetInput" class="code-font w-full h-[150px] mb-4" placeholder="print('Hello World')"></textarea>
-            <div class="flex justify-end gap-3 hover:">
-                <button class="btn btn-secondary" onclick="closeModal('snippetModal')">Cancel</button>
-                <button id="executeSnippetBtn" class="btn btn-primary w-[120px]"><i data-lucide="play" class="w-4 h-4"></i> Execute</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Submit Issue Modal -->
-    <div id="issueModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center shadow-2xl transition-opacity">
-        <div class="bg-surface border border-border w-[500px] rounded-xl flex flex-col p-6 relative">
-            <button class="absolute top-4 right-4 text-textSecondary hover:text-textPrimary" onclick="closeModal('issueModal')">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-            <h2 class="text-lg font-semibold text-textPrimary mb-2 flex items-center gap-2"><i data-lucide="bug" class="w-5 h-5 text-danger"></i> Submit Issue</h2>
-            <p class="text-sm text-textSecondary mb-4">Describe the bug you verified.</p>
-            <textarea id="issueInput" class="w-full bg-background border border-border rounded-lg p-3 text-sm text-textPrimary mb-4 outline-none focus:border-accent custom-scrollbar h-[100px]" placeholder="e.g., 'Off by one error in the for loop causes the last element to be skipped...'"></textarea>
-            <div class="flex justify-end gap-3">
-                <button class="btn btn-secondary" onclick="closeModal('issueModal')">Cancel</button>
-                <button id="executeIssueBtn" class="btn btn-primary w-[120px]">Submit</button>
-            </div>
-        </div>
-    </div>
-
     <script>
         lucide.createIcons();
 
         let sessionId = null;
         let isDone = false;
-        let maxSteps = 20;
-        let currentStep = 0;
 
         const DOM = {
-            taskSelect: document.getElementById('taskSelect'),
-            resetBtn: document.getElementById('resetBtn'),
+            prUrlInput: document.getElementById('prUrlInput'),
+            fetchPrBtn: document.getElementById('fetchPrBtn'),
             stateStatus: document.getElementById('stateStatus'),
-            scoreDisplay: document.getElementById('scoreDisplay'),
-            stepDisplay: document.getElementById('stepDisplay'),
-            rewardDisplay: document.getElementById('rewardDisplay'),
             codeEditor: document.getElementById('codeEditor'),
-            testsOutput: document.getElementById('testsOutput'),
-            execOutput: document.getElementById('execOutput'),
-            testResultsOutput: document.getElementById('testResultsOutput'),
-            actionFeedback: document.getElementById('actionFeedback'),
-            feedbackTag: document.getElementById('feedbackTag'),
-            fileTypeTag: document.getElementById('fileTypeTag'),
-            
-            runSnippetBtn: document.getElementById('runSnippetBtn'),
-            runTestsBtn: document.getElementById('runTestsBtn'),
-            submitBugBtn: document.getElementById('submitBugBtn'),
-            submitFixBtn: document.getElementById('submitFixBtn'),
+            prInfoTag: document.getElementById('prInfoTag'),
             askAiBtn: document.getElementById('askAiBtn'),
-
-            snippetModal: document.getElementById('snippetModal'),
-            snippetInput: document.getElementById('snippetInput'),
-            executeSnippetBtn: document.getElementById('executeSnippetBtn'),
-
-            issueModal: document.getElementById('issueModal'),
-            issueInput: document.getElementById('issueInput'),
-            executeIssueBtn: document.getElementById('executeIssueBtn'),
+            postCommentBtn: document.getElementById('postCommentBtn'),
+            actionFeedback: document.getElementById('actionFeedback'),
+            
+            reviewBox: document.getElementById('reviewBox'),
+            reviewIssue: document.getElementById('reviewIssue'),
+            reviewPatch: document.getElementById('reviewPatch'),
+            reviewTests: document.getElementById('reviewTests'),
         };
 
         function showToast(msg) {
@@ -300,26 +187,24 @@
             setTimeout(() => { toast.style.opacity = '0'; }, 3000);
         }
 
-        function setStatus(loading) {
+        function setStatus(loading, statusText) {
             if(loading) {
                 DOM.stateStatus.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 spinner text-accent"></i> <span class="text-accent">Processing...</span>';
             } else if (isDone) {
-                DOM.stateStatus.innerHTML = '<div class="w-2 h-2 rounded-full bg-success"></div> <span class="text-success">Session Finished</span>';
+                DOM.stateStatus.innerHTML = '<div class="w-2 h-2 rounded-full bg-success"></div> <span class="text-success">Review Posted</span>';
             } else if (sessionId) {
-                DOM.stateStatus.innerHTML = '<div class="w-2 h-2 rounded-full bg-success"></div> <span class="text-success">Active</span>';
+                DOM.stateStatus.innerHTML = '<div class="w-2 h-2 rounded-full bg-success"></div> <span class="text-success">Ready</span>';
             } else {
-                DOM.stateStatus.innerHTML = '<div class="w-2 h-2 rounded-full bg-danger"></div> <span class="text-danger">Uninitialized</span>';
+                DOM.stateStatus.innerHTML = '<div class="w-2 h-2 rounded-full bg-danger"></div> <span class="text-danger">Missing PR</span>';
+            }
+            if (statusText) {
+                DOM.actionFeedback.innerText = statusText;
             }
             lucide.createIcons();
             
             const active = sessionId && !isDone && !loading;
-            DOM.runSnippetBtn.disabled = !active;
-            DOM.runTestsBtn.disabled = !active;
-            DOM.submitBugBtn.disabled = !active;
-            DOM.submitFixBtn.disabled = !active;
             DOM.askAiBtn.disabled = !active;
             DOM.codeEditor.disabled = !active;
-            
             if(!active) {
                 DOM.codeEditor.classList.add('opacity-70');
             } else {
@@ -327,28 +212,18 @@
             }
         }
 
-        function updateStepsUI(stepNo, max_steps) {
-            currentStep = stepNo;
-            maxSteps = max_steps;
-            DOM.stepDisplay.innerText = `${stepNo}/${max_steps}`;
-
-            document.getElementById('stepIndicator1').className = "flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-accent text-white";
+        async function fetchPR() {
+            const url = DOM.prUrlInput.value;
+            if (!url) { showToast("Insert a GitHub PR URL."); return; }
             
-            if (stepNo > 1) {
-                document.getElementById('stepIndicator2').className = "flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-accent text-white";
-            }
-            if (isDone) {
-                document.getElementById('stepIndicator3').className = "flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-success text-white";
-            }
-        }
-
-        async function initTask() {
-            setStatus(true);
+            setStatus(true, "Cloning repository and fetching PR details...");
+            DOM.reviewBox.classList.add('hidden');
+            
             try {
-                const res = await fetch('/reset', {
+                const res = await fetch('/pr/fetch', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ task_id: DOM.taskSelect.value, seed: 42 })
+                    body: JSON.stringify({ url: url })
                 });
                 const data = await res.json();
                 
@@ -358,125 +233,61 @@
                     const obs = data.observation;
                     
                     DOM.codeEditor.value = obs.code || "";
-                    DOM.testsOutput.innerText = obs.visible_tests && obs.visible_tests.length > 0 ? obs.visible_tests.join('\\n\\n') : 'No tests visible.';
-                    DOM.execOutput.innerText = "—";
-                    DOM.testResultsOutput.innerText = "—";
-                    DOM.actionFeedback.innerText = "Environment initialized. Awaiting action...";
-                    DOM.feedbackTag.classList.remove('hidden');
-                    DOM.fileTypeTag.classList.remove('hidden');
-                    DOM.scoreDisplay.innerText = "0.00";
-                    DOM.rewardDisplay.innerText = "+0.00";
-
-                    updateStepsUI(obs.step_number || 0, obs.max_steps || 20);
-                    showToast("Environment Reset Successfully");
+                    DOM.prInfoTag.classList.remove('hidden');
+                    
+                    // Count tests roughly if visible_tests is passed
+                    let testsStr = obs.visible_tests ? Object.keys(obs.visible_tests).join(", ") : "No test files detected.";
+                    
+                    setStatus(false, "PR loaded successfully. Click 'Analyze PR' to synthesize a review.");
+                    showToast("PR Environment Generated");
+                } else {
+                    setStatus(false, data.error || "Failed to fetch PR.");
                 }
             } catch (e) {
-                showToast("Error resetting environment");
+                setStatus(false, "Server error executing clone mechanics.");
             }
-            setStatus(false);
         }
 
-        async function sendAction(actionObj) {
+        async function analyzePR() {
             if(!sessionId || isDone) return;
-            setStatus(true);
-            try {
-                const res = await fetch(`/step/${sessionId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(actionObj)
-                });
-                const data = await res.json();
-                const obs = data.observation;
-                
-                isDone = !!data.done;
-                
-                if (obs.execution_output) DOM.execOutput.innerText = obs.execution_output;
-                if (obs.test_results) DOM.testResultsOutput.innerText = obs.test_results;
-                if (obs.action_feedback) DOM.actionFeedback.innerText = obs.action_feedback;
-                
-                if (actionObj.action_type === 'suggest_fix' && obs.code) {
-                    DOM.codeEditor.value = obs.code;
-                }
-
-                DOM.rewardDisplay.innerText = `${data.reward > 0 ? '+' : ''}${data.reward.toFixed(2)}`;
-
-                if (isDone && data.state) {
-                    DOM.scoreDisplay.innerText = data.state.grader_score.toFixed(4);
-                    showToast("Session Finalized! Score: " + data.state.grader_score.toFixed(4));
-                }
-
-                updateStepsUI(obs.step_number || currentStep + 1, obs.max_steps || maxSteps);
-
-            } catch (e) {
-                console.error(e);
-                showToast("Action execution failed.");
-            }
-            setStatus(false);
-        }
-
-        DOM.askAiBtn.addEventListener('click', async () => {
-            if(!sessionId || isDone) return;
-            setStatus(true);
-            DOM.actionFeedback.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 spinner inline-block"></i> AI is thinking... (this may take a few seconds)';
+            setStatus(true, "");
+            DOM.actionFeedback.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 spinner inline-block text-accent"></i> AI is currently evaluating the repository Diff and test suites...';
             lucide.createIcons();
+            
             try {
                 const res = await fetch(`/ai_suggest/${sessionId}`, { method: 'POST' });
                 const data = await res.json();
                 
-                DOM.actionFeedback.innerHTML = `<strong class="text-white">AI Suggestion:</strong> ${data.explanation}`;
-                
-                if (data.suggestion) {
-                    setTimeout(() => {
-                        sendAction(data.suggestion);
-                    }, 2000);
+                if(data.suggestion) {
+                    DOM.actionFeedback.innerHTML = `<strong class="text-success"><i data-lucide="check-circle" class="w-4 h-4 inline"></i> Analysis Complete</strong><br/>${data.explanation}`;
+                    
+                    // Render the Mock GitHub Comment structure
+                    const sug = data.suggestion;
+                    DOM.reviewIssue.innerText = sug.issue_found || "No obvious issue description gathered.";
+                    DOM.reviewPatch.innerText = sug.suggested_fix || "No patch suggested by AI iteration.";
+                    DOM.reviewTests.innerText = sug.test_results || "N/A";
+                    
+                    DOM.reviewBox.classList.remove('hidden');
+                } else {
+                    DOM.actionFeedback.innerHTML = `<strong class="text-danger">Incomplete Execution</strong><br/>${data.explanation}`;
                 }
-                
-            } catch(e) {
-                DOM.actionFeedback.innerText = "AI failed to generate a suggestion.";
+            } catch (e) {
+                DOM.actionFeedback.innerText = "CRITICAL ERROR: AI generation halted.";
             }
             setStatus(false);
-        });
-
-        function openModal(id) {
-            const m = document.getElementById(id);
-            m.classList.remove('hidden');
-            setTimeout(()=> { m.querySelector('div').classList.remove('scale-95'); }, 10);
+            lucide.createIcons();
         }
 
-        function closeModal(id) {
-            const m = document.getElementById(id);
-            m.querySelector('div').classList.add('scale-95');
-            setTimeout(()=> { m.classList.add('hidden'); }, 150);
-        }
-
-        DOM.resetBtn.addEventListener('click', initTask);
-        DOM.runTestsBtn.addEventListener('click', () => sendAction({action_type: 'run_tests'}));
+        DOM.fetchPrBtn.addEventListener('click', fetchPR);
+        DOM.askAiBtn.addEventListener('click', analyzePR);
         
-        DOM.runSnippetBtn.addEventListener('click', () => {
-            DOM.snippetInput.value = "";
-            openModal('snippetModal');
-        });
-        
-        DOM.executeSnippetBtn.addEventListener('click', () => {
-             const code = DOM.snippetInput.value;
-             closeModal('snippetModal');
-             sendAction({ action_type: 'run_code', code });
-        });
-
-        DOM.submitBugBtn.addEventListener('click', () => {
-            DOM.issueInput.value = "";
-            openModal('issueModal');
-        });
-
-        DOM.executeIssueBtn.addEventListener('click', () => {
-             const issue = DOM.issueInput.value;
-             closeModal('issueModal');
-             sendAction({ action_type: 'create_issue', issue_description: issue });
-        });
-
-        DOM.submitFixBtn.addEventListener('click', () => {
-             const code = DOM.codeEditor.value;
-             sendAction({ action_type: 'suggest_fix', patch_code: code });
+        DOM.postCommentBtn.addEventListener('click', () => {
+            isDone = true;
+            DOM.reviewBox.classList.add('opacity-50', 'pointer-events-none');
+            DOM.postCommentBtn.innerText = "Comment successfully posted to GitHub!";
+            DOM.postCommentBtn.classList.replace('bg-success', 'bg-[#374151]');
+            setStatus(false, "✅ Session finalized successfully. Refresh or insert new PR to continue.");
+            showToast("Review Posted!");
         });
 
     </script>
