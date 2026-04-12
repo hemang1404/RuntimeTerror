@@ -1,1 +1,1 @@
-"""NitpickAI server package."""
+"""RuntimeTerror server package."""
