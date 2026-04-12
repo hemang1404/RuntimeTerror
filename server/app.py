@@ -65,7 +65,7 @@ async def pr_fetch_endpoint(body: dict[str, Any] | None = None):
     if not pr_url:
         return JSONResponse({"error": "Missing 'url' parameter"}, status_code=400)
         
-    from agent.pr_environment import PREnvironment
+    from .pr_environment import PREnvironment
     env = PREnvironment()
     session_id = str(uuid.uuid4())
     _sessions[session_id] = env

@@ -146,7 +146,7 @@ class PREnvironment:
         # Truncation
         if self._state.step_count > MAX_STEPS:
             self._state.cumulative_reward -= 0.5
-            return self._make_obs(
+            return self._make_observation(
                 execution_output="Episode truncated.",
                 test_results="",
                 reward=-0.5,
@@ -156,7 +156,7 @@ class PREnvironment:
 
         atype = action.action_type
         if atype not in VALID_ACTIONS:
-            return self._make_obs(
+            return self._make_observation(
                 execution_output="",
                 test_results="",
                 reward=-0.05,
@@ -175,7 +175,7 @@ class PREnvironment:
         elif atype == "request_changes":
             return self._handle_request_changes(action)
 
-        return self._make_obs("", "", 0.0, False, "Unknown action.")
+        return self._make_observation("", "", 0.0, False, "Unknown action.")
 
     @property
     def state(self) -> DebugState:
@@ -208,7 +208,7 @@ class PREnvironment:
             "output": output[:500],
         })
 
-        return self._make_obs(
+        return self._make_observation(
             execution_output=output,
             test_results="",
             reward=reward,
@@ -278,7 +278,7 @@ class PREnvironment:
             "passed": passed,
         })
 
-        return self._make_obs(
+        return self._make_observation(
             execution_output="",
             test_results=output[:3000],  # Truncate for sanity
             reward=reward,
@@ -299,7 +299,7 @@ class PREnvironment:
             "description": action.issue_description[:200],
         })
 
-        return self._make_obs(
+        return self._make_observation(
             execution_output="",
             test_results="",
             reward=reward,
@@ -375,7 +375,7 @@ class PREnvironment:
         })
 
         feedback = f"Fix applied. Tests {'PASSED' if passed else 'FAILED'}."
-        return self._make_obs(
+        return self._make_observation(
             execution_output="",
             test_results=output[:3000],
             reward=reward,
@@ -405,7 +405,7 @@ class PREnvironment:
             score += 0.50
         self._state.grader_score = score
 
-        return self._make_obs(
+        return self._make_observation(
             execution_output="",
             test_results="",
             reward=reward,
@@ -415,7 +415,7 @@ class PREnvironment:
 
     # ── Helpers ──────────────────────────────────────────────────
 
-    def _make_obs(
+    def _make_observation(
         self,
         execution_output: str,
         test_results: str,
