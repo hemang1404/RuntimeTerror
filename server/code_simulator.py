@@ -1,5 +1,5 @@
 """
-NitpickAI — Code Simulator.
+RuntimeTerror — Code Simulator.
 
 Serves buggy code, test suites, and ground-truth data for a loaded debugging
 task scenario.  The agent queries this to inspect code and understand bugs.
