@@ -1,5 +1,5 @@
 spec_version: 1
-name: nitpick_ai
+name: runtime_terror
 type: space
 runtime: fastapi
 app: server.app:app
