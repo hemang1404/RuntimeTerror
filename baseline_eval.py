@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NitpickAI — Baseline Evaluation Script.
+RuntimeTerror — Baseline Evaluation Script.
 
 Runs the baseline agent across all tasks and produces reproducible metrics:
 - Average reward per task
@@ -27,7 +27,7 @@ from typing import Any
 
 # -- Configuration ------------------------------------------------
 
-BENCHMARK = "nitpick_ai"
+BENCHMARK = "runtime_terror"
 TASKS = ["easy_debug", "medium_debug", "hard_debug"]
 SUCCESS_SCORE_THRESHOLD = float(os.getenv("SUCCESS_SCORE_THRESHOLD", "0.3"))
 
@@ -112,7 +112,7 @@ def run_episode_local(task_id: str, seed: int | None = None) -> dict[str, Any]:
 def run_episode_remote(
     env_url: str, task_id: str, seed: int | None = None
 ) -> dict[str, Any]:
-    """Run the baseline agent against a remote NitpickAI server."""
+    """Run the baseline agent against a remote RuntimeTerror server."""
     import requests
 
     sys.path.insert(0, os.path.dirname(__file__))
@@ -185,7 +185,7 @@ def run_episode_remote(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="NitpickAI Baseline Evaluation — Reproducible benchmark metrics"
+        description="RuntimeTerror Baseline Evaluation — Reproducible benchmark metrics"
     )
     parser.add_argument(
         "--task",
@@ -211,7 +211,7 @@ def main() -> None:
 
     all_results: dict[str, Any] = {}
     print(f"\n{'=' * 60}")
-    print(f"  NitpickAI Baseline Evaluation")
+    print(f"  RuntimeTerror Baseline Evaluation")
     print(f"  Tasks: {tasks}")
     print(f"  Episodes per task: {args.episodes}")
     print(f"  Mode: {'remote (' + args.env_url + ')' if args.env_url else 'local'}")
