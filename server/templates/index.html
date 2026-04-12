@@ -74,21 +74,30 @@
     <div id="toast"><i data-lucide="info"></i><span id="toast-msg"></span></div>
 
     <!-- Header -->
-    <header class="h-14 border-b border-border flex items-center px-6 shrink-0 bg-surface z-10 w-full relative">
-        <div class="flex items-center gap-4 border-r border-border pr-6">
-            <div class="h-6 w-6 bg-accent rounded shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
-            <h1 class="text-textPrimary font-semibold text-sm tracking-wide">RuntimeTerror</h1>
+    <header class="py-3 border-b border-border bg-surface z-10 w-full relative shrink-0">
+        <div class="flex items-center justify-between w-full px-6">
+            <div class="flex items-center gap-4 border-r border-border pr-6 shrink-0">
+                <div class="h-6 w-6 bg-accent rounded shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
+                <h1 class="text-textPrimary font-semibold text-sm tracking-wide">RuntimeTerror</h1>
+            </div>
+            
+            <div class="flex items-center gap-3 pl-6 w-full flex-1">
+                <i data-lucide="git-pull-request" class="w-4 h-4 text-textSecondary"></i>
+                <input type="text" id="prUrlInput" value="https://github.com/hemang1404/dummy-bench/pull/3" class="bg-background border border-border text-sm rounded-lg px-3 py-1.5 outline-none text-textPrimary hover:border-textSecondary focus:border-accent transition-colors w-[400px]" placeholder="Paste GitHub PR URL..." />
+                <button id="fetchPrBtn" class="btn btn-secondary !py-1.5 !px-4 !text-sm !bg-background ml-2">
+                    Init PR Workspace
+                </button>
+                <div id="statusIndicator" class="ml-4 flex items-center gap-2 text-xs">
+                    <span id="stateStatus" class="flex items-center gap-1 text-danger font-medium"><div class="w-2 h-2 rounded-full bg-danger"></div> Missing PR</span>
+                </div>
+            </div>
         </div>
         
-        <div class="flex items-center gap-3 pl-6 w-full max-w-3xl">
-            <i data-lucide="git-pull-request" class="w-4 h-4 text-textSecondary"></i>
-            <input type="text" id="prUrlInput" value="https://github.com/pallets/click/pull/2224" class="bg-background border border-border text-sm rounded-lg px-3 py-1.5 outline-none text-textPrimary hover:border-textSecondary focus:border-accent transition-colors w-[400px]" placeholder="Paste GitHub PR URL..." />
-            <button id="fetchPrBtn" class="btn btn-secondary !py-1.5 !px-4 !text-sm !bg-background ml-2">
-                Init PR Workspace
-            </button>
-            <div id="statusIndicator" class="ml-4 flex items-center gap-2 text-xs">
-                <span id="stateStatus" class="flex items-center gap-1 text-danger font-medium"><div class="w-2 h-2 rounded-full bg-danger"></div> Missing PR</span>
-            </div>
+        <div class="flex items-center gap-2 px-6 mt-3 ml-48">
+            <span class="text-[11px] uppercase tracking-wider text-textSecondary/70 font-semibold mr-1">Demo Shortcuts:</span>
+            <button class="demo-btn text-xs bg-background border border-border text-accent px-2 py-1 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/3">1. Off-By-One Bug</button>
+            <button class="demo-btn text-xs bg-background border border-border text-accent px-2 py-1 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/4">2. Zero Division</button>
+            <button class="demo-btn text-xs bg-background border border-border text-accent px-2 py-1 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/1">3. Broken Parser</button>
         </div>
     </header>
 
@@ -147,8 +156,15 @@
                         </div>
                     </div>
                     
-                    <div class="flex justify-end mt-2">
-                        <button id="postCommentBtn" class="btn btn-primary bg-success hover:bg-[#059669] text-white !border-none shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+                    <div id="demoFlair" class="hidden text-xs text-accent bg-accent/10 border border-accent/20 px-3 py-2 rounded-md mb-2 flex items-center gap-2">
+                        <i data-lucide="info" class="w-4 h-4"></i> Automated GitHub PR commenting is restricted to trusted demo branches.
+                    </div>
+                    
+                    <div class="flex justify-end gap-3 mt-2">
+                        <button id="copyPatchBtn" class="hidden btn btn-secondary text-textPrimary !bg-[#21262d] border-[#30363d] hover:bg-[#30363d] shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+                            <i data-lucide="copy" class="w-4 h-4"></i> Copy Patch to Clipboard
+                        </button>
+                        <button id="postCommentBtn" class="hidden btn btn-primary bg-success hover:bg-[#059669] text-white !border-none shadow-[0_0_10px_rgba(16,185,129,0.3)]">
                             <i data-lucide="send" class="w-4 h-4"></i> Post Comment & Approve
                         </button>
                     </div>
@@ -178,7 +194,18 @@
             reviewIssue: document.getElementById('reviewIssue'),
             reviewPatch: document.getElementById('reviewPatch'),
             reviewTests: document.getElementById('reviewTests'),
+            
+            demoFlair: document.getElementById('demoFlair'),
+            copyPatchBtn: document.getElementById('copyPatchBtn')
         };
+        
+        // Demo Switcher Logic
+        document.querySelectorAll('.demo-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                DOM.prUrlInput.value = e.target.dataset.url;
+                fetchPR(); // Auto trigger environment build
+            });
+        });
 
         function showToast(msg) {
             const toast = document.getElementById('toast');
@@ -268,6 +295,18 @@
                     DOM.reviewTests.innerText = sug.test_results || "N/A";
                     
                     DOM.reviewBox.classList.remove('hidden');
+                    
+                    // Activate conditional UI buttons based on UX spec
+                    const isDemoRepo = DOM.prUrlInput.value.includes("hemang1404/");
+                    if (isDemoRepo) {
+                        DOM.postCommentBtn.classList.remove('hidden');
+                        DOM.copyPatchBtn.classList.add('hidden');
+                        DOM.demoFlair.classList.remove('hidden');
+                    } else {
+                        DOM.postCommentBtn.classList.add('hidden');
+                        DOM.copyPatchBtn.classList.remove('hidden');
+                        DOM.demoFlair.classList.add('hidden');
+                    }
                 } else {
                     DOM.actionFeedback.innerHTML = `<strong class="text-danger">Incomplete Execution</strong><br/>${data.explanation}`;
                 }
@@ -318,6 +357,25 @@
                 DOM.postCommentBtn.disabled = false;
                 showToast("Network Error: could not post comment.");
             }
+        });
+        
+        DOM.copyPatchBtn.addEventListener('click', () => {
+            const issueText = DOM.reviewIssue.innerText;
+            const patchText = DOM.reviewPatch.innerText;
+            const testsText = DOM.reviewTests.innerText;
+            
+            const commentBody = `### 🐛 Issue Identified\n${issueText}\n\n### 💡 Suggested Patch\n\`\`\`python\n${patchText}\n\`\`\`\n\n### 🧪 Test Verification\n\`\`\`text\n${testsText}\n\`\`\``;
+            
+            navigator.clipboard.writeText(commentBody).then(() => {
+                DOM.copyPatchBtn.innerText = "Patch Copied!";
+                setTimeout(() => {
+                    DOM.copyPatchBtn.innerHTML = '<i data-lucide="copy" class="w-4 h-4"></i> Copy Patch to Clipboard';
+                    lucide.createIcons();
+                }, 2000);
+                showToast("Patch Format Copied to Clipboard!");
+            }).catch(err => {
+                showToast("Error copying to clipboard.");
+            });
         });
 
     </script>
