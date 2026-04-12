@@ -174,7 +174,36 @@ async def ai_suggest_endpoint(session_id: str):
         return JSONResponse({"suggestion": None, "explanation": f"AI error: {str(e)}"}, status_code=500)
 
 
-
+@app.post("/pr/post_comment/{session_id}")
+async def pr_post_comment_endpoint(session_id: str, body: dict[str, Any]):
+    env = _sessions.get(session_id)
+    if env is None or env._pr is None:
+        return JSONResponse({"error": "Unknown or invalid PR session."})
+        
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        # Return error if no token is available to authenticate the API request
+        return JSONResponse({"error": "GITHUB_TOKEN environment variable is not set. Please set it in your terminal before starting the server."})
+        
+    comment_body = body.get("comment", "")
+    
+    owner = env._pr.owner
+    repo = env._pr.repo
+    pr_num = env._pr.pr_number
+    
+    url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_num}/comments"
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    import requests
+    resp = requests.post(url, headers=headers, json={"body": comment_body})
+    
+    if resp.status_code == 201:
+        return JSONResponse({"success": True})
+    else:
+        return JSONResponse({"error": f"GitHub API error: {resp.text}"})
 
 # ── WebSocket endpoint ───────────────────────────────────────────
 

@@ -281,13 +281,43 @@
         DOM.fetchPrBtn.addEventListener('click', fetchPR);
         DOM.askAiBtn.addEventListener('click', analyzePR);
         
-        DOM.postCommentBtn.addEventListener('click', () => {
-            isDone = true;
-            DOM.reviewBox.classList.add('opacity-50', 'pointer-events-none');
-            DOM.postCommentBtn.innerText = "Comment successfully posted to GitHub!";
-            DOM.postCommentBtn.classList.replace('bg-success', 'bg-[#374151]');
-            setStatus(false, "✅ Session finalized successfully. Refresh or insert new PR to continue.");
-            showToast("Review Posted!");
+        DOM.postCommentBtn.addEventListener('click', async () => {
+            if(!sessionId) return;
+            
+            const issueText = DOM.reviewIssue.innerText;
+            const patchText = DOM.reviewPatch.innerText;
+            const testsText = DOM.reviewTests.innerText;
+            
+            const commentBody = `Hello! I've analyzed this PR. Here is my review:\n\n### 🐛 Issue Identified\n${issueText}\n\n### 💡 Suggested Patch\nI recommend the following modifications to resolve the underlying failure:\n\`\`\`python\n${patchText}\n\`\`\`\n\n### 🧪 Test Verification\n\`\`\`text\n${testsText}\n\`\`\``;
+            
+            DOM.postCommentBtn.innerText = "Posting to GitHub...";
+            DOM.postCommentBtn.disabled = true;
+            
+            try {
+                const res = await fetch(`/pr/post_comment/${sessionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: commentBody })
+                });
+                const data = await res.json();
+                
+                if(data.success) {
+                    isDone = true;
+                    DOM.reviewBox.classList.add('opacity-50', 'pointer-events-none');
+                    DOM.postCommentBtn.innerText = "Comment successfully posted to GitHub!";
+                    DOM.postCommentBtn.classList.replace('bg-success', 'bg-[#374151]');
+                    setStatus(false, "✅ Session finalized successfully. Refresh or insert new PR to continue.");
+                    showToast("Review Posted to GitHub!");
+                } else {
+                    DOM.postCommentBtn.innerText = "Post Comment & Approve";
+                    DOM.postCommentBtn.disabled = false;
+                    showToast("Error: " + data.error);
+                }
+            } catch (e) {
+                DOM.postCommentBtn.innerText = "Post Comment & Approve";
+                DOM.postCommentBtn.disabled = false;
+                showToast("Network Error: could not post comment.");
+            }
         });
 
     </script>
