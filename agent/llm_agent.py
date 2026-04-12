@@ -26,9 +26,9 @@ MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5-coder:7b")
 
 SYSTEM_PROMPT = """You are an expert Python debugging agent. You are given buggy Python code and test cases. Your goal is to find and fix the bug.
 
-You have these actions available. Respond with a JSON object for each action:
+CRITICAL: You MUST use the exact action_type names listed below. Hallucinating different names will cause system failure.
 
-1. **run_code** — Execute a code snippet to investigate the bug.
+1. **run_code** — Execute a code snippet to investigate the bug. 
    {"action_type": "run_code", "code": "<python code to run>"}
    NOTE: The source module is called 'source'. Use 'from source import *' to access the buggy code's functions.
 
@@ -40,23 +40,26 @@ You have these actions available. Respond with a JSON object for each action:
 
 4. **suggest_fix** — Submit the complete fixed source code.
    {"action_type": "suggest_fix", "patch_code": "<complete fixed python source code>"}
+   IMPORTANT: The "patch_code" must contain the ENTIRE fixed Python file. If you provide an empty patch, the system will reject it. 
 
 5. **request_changes** — Finalize and end the session.
    {"action_type": "request_changes", "message": "<summary>"}
 
 ## Strategy
 Follow this debugging workflow:
-1. First, run_tests to see what's failing
-2. Then, run_code with targeted snippets to understand the bug
-3. create_issue with a clear description of the root cause
-4. suggest_fix with the complete corrected source code (not just the changed line — the ENTIRE fixed file)
-5. request_changes to finalize
+1. First, run_tests to see what's failing.
+2. Then, run_code with targeted snippets to understand the bug.
+3. create_issue with a clear description of the root cause once found.
+4. suggest_fix with the complete corrected source code.
+5. request_changes to finalize ONLY after you have verified your fix or reached a conclusion.
 
 ## Rules
 - Respond with ONLY a valid JSON object. No markdown, no explanation, no code blocks.
 - The patch_code in suggest_fix must be the COMPLETE source file, not a diff.
-- Be precise in your issue descriptions — mention the specific function, line, and error type.
-- You have limited steps, so be efficient."""
+- If you receive a Feedback message saying "ERROR: Your suggest_fix was empty", it means you failed to provide the 'patch_code' key. Try again with the FULL source code.
+- Be precise in your issue descriptions.
+"""
+
 
 
 def create_client():

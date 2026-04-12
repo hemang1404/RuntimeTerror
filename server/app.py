@@ -144,14 +144,21 @@ async def ai_suggest_endpoint(session_id: str):
                 
                 test_obs = env.step({"action_type": "suggest_fix", "patch_code": patch})
                 passed = test_obs.tests_passed
-                tests_summary = "✅ All tests successfully passed." if passed else "❌ Tests failed with this patch."
                 
+                # If tests fail, give the AI another chance in the loop
+                if not passed and i < max_internal_steps - 1:
+                    curr_obs_dict = test_obs.model_dump()
+                    curr_obs_dict["action_feedback"] = f"CRITICAL: Your last fix FAILED the tests. Regression detected. Please analyze the failure logs below and provide a NEW, corrected version of the full file.\n\nLogs:\n{test_obs.test_results}"
+                    continue
+
+                tests_summary = "✅ All tests successfully passed." if passed else "❌ Tests failed with this patch."
                 issue_desc = env._state.issue_submitted if hasattr(env._state, "issue_submitted") and env._state.issue_submitted else "Identified logical defect based on automated codebase exploration."
                 
                 review_comment = {
                     "issue_found": issue_desc,
                     "suggested_fix": patch,
-                    "test_results": f"{tests_summary}\n\nLog:\n{test_obs.test_results}"
+                    "test_results": f"{tests_summary}\n\nLog:\n{test_obs.test_results}",
+                    "passed": passed
                 }
                 return JSONResponse({"suggestion": review_comment, "explanation": f"AI synthesized a fix after {i+1} steps of analysis."})
                 
@@ -161,10 +168,10 @@ async def ai_suggest_endpoint(session_id: str):
                 curr_obs_dict = obs_obj.model_dump()
                 continue
             elif atype == "request_changes":
-                # Agent thinks it's done without fixing? 
                 return JSONResponse({"suggestion": None, "explanation": "AI ended session without providing a code patch."})
             else:
                 return JSONResponse({"suggestion": None, "explanation": f"AI requested unknown action: {atype}"})
+
                 
         return JSONResponse({"suggestion": None, "explanation": f"AI reached maximum exploration depth ({max_internal_steps} steps) without a conclusive fix."})
             

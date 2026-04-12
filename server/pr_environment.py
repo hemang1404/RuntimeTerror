@@ -238,14 +238,20 @@ class PREnvironment:
 
             # Write test files
             for fname, content in self._test_sources.items():
-                test_path = os.path.join(workspace, f"test_{os.path.basename(fname)}")
+                base = os.path.basename(fname)
+                test_name = base if base.startswith("test_") else f"test_{base}"
+                test_path = os.path.join(workspace, test_name)
+                
                 if not test_path.endswith(".py"):
                     test_path += ".py"
-                # Avoid duplicate names
-                if os.path.exists(test_path):
-                    test_path = os.path.join(workspace, f"t_{hash(fname) % 10000}_{os.path.basename(fname)}")
+                
+                # Avoid duplicate names in workspace
+                if os.path.exists(test_path) and base not in [os.path.basename(x) for x in self._current_source.keys()]:
+                    test_path = os.path.join(workspace, f"t_{hash(fname) % 10000}_{base}")
+                
                 with open(test_path, "w", encoding="utf-8") as f:
                     f.write(content)
+
 
             # (Pip install skipped to enforce zero-dependency standard library isolation)
 
@@ -332,11 +338,14 @@ class PREnvironment:
                 f.write(combined)
 
             for fname, content in self._test_sources.items():
-                test_path = os.path.join(workspace, f"test_{os.path.basename(fname)}")
+                base = os.path.basename(fname)
+                test_name = base if base.startswith("test_") else f"test_{base}"
+                test_path = os.path.join(workspace, test_name)
                 if not test_path.endswith(".py"):
                     test_path += ".py"
                 with open(test_path, "w", encoding="utf-8") as f:
                     f.write(content)
+
 
             # (Pip install skipped to enforce zero-dependency standard library isolation)
 
