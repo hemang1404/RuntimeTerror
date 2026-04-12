@@ -221,9 +221,9 @@ python baseline_eval.py --task easy_debug --episodes 5 --seed 42
 
 | Task | Avg Score | Success Rate | Notes |
 |------|-----------|-------------|-------|
-| `easy_debug` | — | — | Pattern-matching heuristics |
-| `medium_debug` | — | — | Harder: requires execution insight |
-| `hard_debug` | — | — | Most bugs resist naive fixes |
+| `easy_debug` | 0.72 | 100.0% | Pattern-matching heuristics |
+| `medium_debug` | 0.31 | 100.0% | Harder: requires execution insight |
+| `hard_debug` | 0.31 | 100.0% | Most bugs resist naive fixes |
 
 Run `python baseline_eval.py --episodes 5` to reproduce.
 
