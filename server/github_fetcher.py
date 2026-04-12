@@ -1,5 +1,5 @@
 """
-NitpickAI -- GitHub PR Fetcher.
+RuntimeTerror -- GitHub PR Fetcher.
 
 Fetches pull request data from the GitHub REST API:
   - PR metadata (title, description, state)
@@ -245,7 +245,7 @@ def clone_repo(pr: PRData, target_dir: str | None = None) -> str:
     Returns the path to the cloned directory.
     """
     if target_dir is None:
-        target_dir = tempfile.mkdtemp(prefix="nitpick_pr_")
+        target_dir = tempfile.mkdtemp(prefix="runtime_terror_pr_")
 
     repo_url = f"https://github.com/{pr.owner}/{pr.repo}.git"
 
