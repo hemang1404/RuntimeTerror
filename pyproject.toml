@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nitpick-ai"
+name = "runtime-terror"
 version = "0.1.0"
 description = "Interactive debugging benchmark for AI agents — find bugs, run code, submit fixes, get graded"
 requires-python = ">=3.10"
