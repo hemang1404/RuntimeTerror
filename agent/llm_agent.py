@@ -21,7 +21,7 @@ from typing import Any
 # ── Configuration ────────────────────────────────────────────────
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:11434/v1")
-API_KEY = os.environ.get("HF_TOKEN") or os.environ.get("API_KEY", "ollama")
+API_KEY = os.environ.get("API_KEY", os.environ.get("HF_TOKEN", "ollama"))
 MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5-coder:7b")
 
 SYSTEM_PROMPT = """You are an expert Python debugging agent. You are given buggy Python code and test cases. Your goal is to find and fix the bug.

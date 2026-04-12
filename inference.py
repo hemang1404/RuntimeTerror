@@ -26,10 +26,10 @@ from openai import OpenAI
 import requests
 
 # ── Environment Configuration ────────────────────────────────────
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_KEY = os.environ.get("API_KEY", os.environ.get("HF_TOKEN", "missing-token"))
+ENV_URL = os.environ.get("ENV_URL", "http://localhost:7860")
 
 BENCHMARK = "runtime_terror"
 TASKS = ["easy_debug", "medium_debug", "hard_debug"]
@@ -423,10 +423,10 @@ def run_episode(client: OpenAI, env_url: str, task_id: str, seed: int = 42) -> f
 
 
 def main() -> None:
-    if not HF_TOKEN:
-        print("[WARN] HF_TOKEN not set — LLM calls may fail", flush=True)
+    if not API_KEY or API_KEY == "missing-token":
+        print("[WARN] API_KEY not set — LLM calls may fail", flush=True)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "missing-token")
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     all_scores: dict[str, float] = {}
     for task_id in TASKS:
