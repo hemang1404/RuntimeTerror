@@ -215,6 +215,10 @@
             <button id="submitFixBtn" class="btn btn-primary" disabled>
                 <i data-lucide="wrench" class="w-4 h-4"></i> Submit Fix
             </button>
+            <div class="w-[1px] h-6 bg-border mx-2"></div>
+            <button id="askAiBtn" class="btn btn-secondary border-accent text-[#8b9cf6] hover:bg-accent/10" disabled>
+                <i data-lucide="sparkles" class="w-4 h-4 text-accent"></i> Ask AI
+            </button>
         </div>
     </footer>
 
@@ -278,6 +282,7 @@
             runTestsBtn: document.getElementById('runTestsBtn'),
             submitBugBtn: document.getElementById('submitBugBtn'),
             submitFixBtn: document.getElementById('submitFixBtn'),
+            askAiBtn: document.getElementById('askAiBtn'),
 
             snippetModal: document.getElementById('snippetModal'),
             snippetInput: document.getElementById('snippetInput'),
@@ -312,6 +317,7 @@
             DOM.runTestsBtn.disabled = !active;
             DOM.submitBugBtn.disabled = !active;
             DOM.submitFixBtn.disabled = !active;
+            DOM.askAiBtn.disabled = !active;
             DOM.codeEditor.disabled = !active;
             
             if(!active) {
@@ -352,7 +358,7 @@
                     const obs = data.observation;
                     
                     DOM.codeEditor.value = obs.code || "";
-                    DOM.testsOutput.innerText = obs.visible_tests && obs.visible_tests.length > 0 ? obs.visible_tests.join('\n\n') : 'No tests visible.';
+                    DOM.testsOutput.innerText = obs.visible_tests && obs.visible_tests.length > 0 ? obs.visible_tests.join('\\n\\n') : 'No tests visible.';
                     DOM.execOutput.innerText = "—";
                     DOM.testResultsOutput.innerText = "—";
                     DOM.actionFeedback.innerText = "Environment initialized. Awaiting action...";
@@ -407,6 +413,29 @@
             }
             setStatus(false);
         }
+
+        DOM.askAiBtn.addEventListener('click', async () => {
+            if(!sessionId || isDone) return;
+            setStatus(true);
+            DOM.actionFeedback.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 spinner inline-block"></i> AI is thinking... (this may take a few seconds)';
+            lucide.createIcons();
+            try {
+                const res = await fetch(`/ai_suggest/${sessionId}`, { method: 'POST' });
+                const data = await res.json();
+                
+                DOM.actionFeedback.innerHTML = `<strong class="text-white">AI Suggestion:</strong> ${data.explanation}`;
+                
+                if (data.suggestion) {
+                    setTimeout(() => {
+                        sendAction(data.suggestion);
+                    }, 2000);
+                }
+                
+            } catch(e) {
+                DOM.actionFeedback.innerText = "AI failed to generate a suggestion.";
+            }
+            setStatus(false);
+        });
 
         function openModal(id) {
             const m = document.getElementById(id);

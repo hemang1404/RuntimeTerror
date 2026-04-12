@@ -82,6 +82,41 @@ async def state_endpoint(session_id: str):
     return JSONResponse(env.state.model_dump())
 
 
+@app.post("/ai_suggest/{session_id}")
+async def ai_suggest_endpoint(session_id: str):
+    env = _sessions.get(session_id)
+    if env is None:
+        return JSONResponse({"error": "Unknown session"}, status_code=404)
+        
+    last_output = getattr(env._state, "last_output", "") if hasattr(env, "_state") and hasattr(env._state, "last_output") else ""
+    obs = env._make_observation(
+        execution_output=last_output,
+        test_results="",
+        reward=0.0,
+        done=False,
+        action_feedback="AI analyzing current state..."
+    )
+    
+    from agent.llm_agent import LLMAgent
+    try:
+        agent = LLMAgent()
+        action = agent.act(obs.model_dump())
+        atype = action.get("action_type", "unknown")
+        
+        explanation = f"AI computed optimal next move: {atype}"
+        if atype == "suggest_fix":
+            explanation = "AI identified a bug and synthesized a code patch. Submitting fix now..."
+        elif atype == "create_issue":
+            explanation = f"AI Analysis: {action.get('issue_description')}"
+        elif atype == "run_code":
+            explanation = "AI requests to run exploratory code snippet to investigate state."
+            
+        return JSONResponse({"suggestion": action, "explanation": explanation})
+    except Exception as e:
+        import traceback
+        return JSONResponse({"suggestion": None, "explanation": f"AI error: {str(e)}"}, status_code=500)
+
+
 # ── WebSocket endpoint ───────────────────────────────────────────
 
 
