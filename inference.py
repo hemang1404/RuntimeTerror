@@ -426,7 +426,13 @@ def main() -> None:
     if not API_KEY or API_KEY == "missing-token":
         print("[WARN] API_KEY not set — LLM calls may fail", flush=True)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    if "API_BASE_URL" in os.environ and "API_KEY" in os.environ:
+        client = OpenAI(
+            base_url=os.environ["API_BASE_URL"],
+            api_key=os.environ["API_KEY"]
+        )
+    else:
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     all_scores: dict[str, float] = {}
     for task_id in TASKS:
