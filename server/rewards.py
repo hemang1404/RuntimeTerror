@@ -1,5 +1,5 @@
 """
-NitpickAI — Trajectory-Level Reward Engine.
+RuntimeTerror — Trajectory-Level Reward Engine.
 
 Computes per-step rewards for every agent action.  Rewards are designed to
 give meaningful signal over the full trajectory — not just a binary score at
