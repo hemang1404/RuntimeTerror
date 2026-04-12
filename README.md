@@ -1,5 +1,5 @@
 ---
-title: NitpickAI
+title: RuntimeTerror
 emoji: "🔍"
 colorFrom: purple
 colorTo: blue
@@ -15,7 +15,7 @@ license: mit
 pinned: false
 ---
 
-# 🔍 NitpickAI — Interactive Debugging Benchmark for AI Agents
+# 🔍 RuntimeTerror — Interactive Debugging Benchmark for AI Agents
 
 > **An AI agent receives buggy Python code, investigates using execution tools, identifies the bug, and submits a fix — validated by actual test execution.**
 
@@ -33,7 +33,7 @@ Debugging is the **most cognitively demanding task in software engineering**. Un
 4. **Patching code** — write a targeted fix
 5. **Validating** — run tests to confirm the fix works
 
-NitpickAI simulates this full loop, testing multi-step reasoning, code comprehension, and execution-based debugging — capabilities no existing benchmark adequately covers.
+RuntimeTerror simulates this full loop, testing multi-step reasoning, code comprehension, and execution-based debugging — capabilities no existing benchmark adequately covers.
 
 ---
 
@@ -154,8 +154,8 @@ python -m uvicorn server.app:app --host 0.0.0.0 --port 7860
 ### Docker
 
 ```bash
-docker build -t nitpick-ai:latest .
-docker run -p 7860:7860 nitpick-ai:latest
+docker build -t runtime-terror:latest .
+docker run -p 7860:7860 runtime-terror:latest
 ```
 
 ---
@@ -165,9 +165,9 @@ docker run -p 7860:7860 nitpick-ai:latest
 ### Python Client
 
 ```python
-from client import NitpickEnv
+from client import RuntimeTerrorEnv
 
-env = NitpickEnv(base_url="http://localhost:7860")
+env = RuntimeTerrorEnv(base_url="http://localhost:7860")
 
 # Start a debugging session
 obs = env.reset(task_id="easy_debug")
