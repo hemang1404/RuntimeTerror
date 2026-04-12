@@ -1,5 +1,5 @@
 """
-NitpickAI — Sandboxed Code Executor.
+RuntimeTerror — Sandboxed Code Executor.
 
 Runs agent-suggested code snippets and test suites in sandboxed subprocesses.
 Enforces timeout and safety limits.
