@@ -293,18 +293,77 @@ def build_gradio_app():
 
     # ── Build Gradio Interface ─────────────────────────────────
 
+    sleek_theme = gr.themes.Base(
+        primary_hue="indigo",
+        secondary_hue="blue",
+        neutral_hue="slate",
+        font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "system-ui", "sans-serif"],
+        font_mono=[gr.themes.GoogleFont("JetBrains Mono"), "ui-monospace", "monospace"],
+    ).set(
+        body_background_fill="*neutral_950",
+        body_background_fill_dark="#0b0f19",
+        background_fill_primary="#111827",
+        background_fill_primary_dark="#111827",
+        background_fill_secondary="#0d1117",
+        background_fill_secondary_dark="#0d1117",
+        border_color_accent="*primary_500",
+        border_color_accent_dark="*primary_500",
+        border_color_primary="#1e293b",
+        border_color_primary_dark="#1e293b",
+        color_accent="*primary_500",
+        color_accent_soft_dark="*primary_500",
+        block_background_fill="#111827",
+        block_background_fill_dark="#111827",
+        block_border_width="1px",
+        block_border_color="#1e293b",
+        block_border_color_dark="#1e293b",
+        block_radius="12px",
+        panel_background_fill="#0d1117",
+        panel_background_fill_dark="#0d1117",
+        button_primary_background_fill="*primary_600",
+        button_primary_background_fill_dark="linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+        button_primary_background_fill_hover="*primary_500",
+        button_primary_background_fill_hover_dark="linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)",
+        button_secondary_background_fill="#1e293b",
+        button_secondary_background_fill_dark="#1e293b",
+        button_secondary_border_color="#334155",
+        button_secondary_border_color_dark="#334155",
+        button_secondary_text_color="#cbd5e1",
+        button_secondary_text_color_dark="#cbd5e1",
+        button_secondary_background_fill_hover="#334155",
+        button_secondary_background_fill_hover_dark="#334155",
+        button_secondary_text_color_hover="#f8fafc",
+        button_secondary_text_color_hover_dark="#f8fafc",
+        input_background_fill="#0d1117",
+        input_background_fill_dark="#0d1117",
+    )
+
+    custom_css = """
+    body { background-color: #0b0f19 !important; color: #e2e8f0; }
+    .gradio-container { max-width: 1400px !important; }
+    .gr-box, .gr-panel, fieldset, .border-solid {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4) !important;
+    }
+    .code-display textarea, .code-display pre { 
+        font-size: 13px !important; 
+        color: #c9d1d9 !important;
+        border: 1px solid #30363d !important;
+        padding: 12px !important;
+    }
+    .status-bar { font-size: 14px; font-weight: 600; color: #38bdf8 !important; }
+    h1, h2, h3 { color: #f8fafc !important; font-weight: 600 !important; }
+    button.primary { border: none !important; transition: all 0.2s ease; }
+    button.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important; }
+    button.secondary { transition: all 0.2s ease; }
+    .gr-tabs > .border-transparent { border-bottom: 2px solid #1e293b !important; }
+    .gr-tabs button { padding-bottom: 8px !important; transition: color 0.2s; }
+    .gr-tabs button.selected { border-bottom: 2px solid #38bdf8 !important; color: #38bdf8 !important; }
+    """
+
     with gr.Blocks(
         title="RuntimeTerror — Interactive Debugging Benchmark",
-        theme=gr.themes.Soft(
-            primary_hue="violet",
-            secondary_hue="slate",
-            neutral_hue="slate",
-        ),
-        css="""
-        .gradio-container { max-width: 1400px !important; }
-        .code-display textarea { font-family: 'Fira Code', 'Cascadia Code', monospace !important; font-size: 13px !important; }
-        .status-bar { font-size: 14px; font-weight: 600; }
-        """,
+        theme=sleek_theme,
+        css=custom_css,
     ) as demo:
         gr.Markdown(
             """
