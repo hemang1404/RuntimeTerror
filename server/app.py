@@ -1,5 +1,5 @@
 """
-NitpickAI — FastAPI + Gradio Server Application.
+RuntimeTerror — FastAPI + Gradio Server Application.
 
 Creates the HTTP server for the debugging environment, compatible with
 the OpenEnv client ecosystem. Includes a Gradio-based UI with:
@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse, HTMLResponse
 
 from .debug_environment import DebugEnvironment
 
-app = FastAPI(title="NitpickAI", version="0.1.0")
+app = FastAPI(title="RuntimeTerror", version="0.1.0")
 
 # Session storage (one env per session)
 _sessions: dict[str, DebugEnvironment] = {}
@@ -294,7 +294,7 @@ def build_gradio_app():
     # ── Build Gradio Interface ─────────────────────────────────
 
     with gr.Blocks(
-        title="NitpickAI — Interactive Debugging Benchmark",
+        title="RuntimeTerror — Interactive Debugging Benchmark",
         theme=gr.themes.Soft(
             primary_hue="violet",
             secondary_hue="slate",
@@ -308,7 +308,7 @@ def build_gradio_app():
     ) as demo:
         gr.Markdown(
             """
-            # 🔍 NitpickAI — Interactive Debugging Benchmark
+            # 🔍 RuntimeTerror — Interactive Debugging Benchmark
             **Debug real Python code. Identify bugs. Submit fixes. Get graded.**
 
             An OpenEnv-compliant environment for evaluating AI agents on interactive code debugging.
@@ -700,7 +700,7 @@ def build_gradio_app():
             with gr.Tab("ℹ️ About"):
                 gr.Markdown(
                     """
-                    ## NitpickAI — Interactive Debugging Benchmark
+                    ## RuntimeTerror — Interactive Debugging Benchmark
 
                     ### Action Space
                     | Action | Description | Reward |
@@ -748,7 +748,7 @@ except ImportError:
     @app.get("/")
     async def root():
         return HTMLResponse(
-            "<h1>NitpickAI</h1>"
+            "<h1>RuntimeTerror</h1>"
             "<p>Interactive Debugging Benchmark for AI Agents.</p>"
             "<p>Install gradio for the full UI: <code>pip install gradio</code></p>"
             "<p>Connect via REST API at <code>/reset</code>, <code>/step/{id}</code>, <code>/state/{id}</code></p>"
