@@ -1,4 +1,4 @@
-"""NitpickAI — Baseline Agent package."""
+"""RuntimeTerror — Baseline Agent package."""
 
 from .baseline import BaselineAgent
 
