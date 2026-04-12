@@ -1,5 +1,5 @@
 """
-NitpickAI -- PR Debugging Environment.
+RuntimeTerror -- PR Debugging Environment.
 
 Wraps a real GitHub pull request as a debugging environment.
 The agent can read the PR diff, run the tests, investigate the code,
@@ -69,11 +69,11 @@ class PREnvironment:
         if not self._pr.source_files and not self._pr.test_files:
             raise ValueError(
                 f"PR #{self._pr.pr_number} has no Python source files changed. "
-                "NitpickAI only works with Python repositories."
+                "RuntimeTerror only works with Python repositories."
             )
 
         # Set up workspace
-        self._workspace = tempfile.mkdtemp(prefix="nitpick_pr_")
+        self._workspace = tempfile.mkdtemp(prefix="runtime_terror_pr_")
         self._current_source = dict(self._pr.source_files)
 
         # Combine test files: those changed in PR + those from repo
@@ -219,7 +219,7 @@ class PREnvironment:
         """Run the test suite against the current source code."""
         # Reuse a persistent workspace to avoid re-installing deps every time
         if not self._deps_workspace:
-            self._deps_workspace = tempfile.mkdtemp(prefix="nitpick_ws_")
+            self._deps_workspace = tempfile.mkdtemp(prefix="runtime_terror_ws_")
         workspace = self._deps_workspace
 
         try:
@@ -319,7 +319,7 @@ class PREnvironment:
             self._current_source[first_file] = action.patch_code
 
         # Run tests with the patched code
-        workspace = tempfile.mkdtemp(prefix="nitpick_fix_")
+        workspace = tempfile.mkdtemp(prefix="runtime_terror_fix_")
         try:
             for fname, content in self._current_source.items():
                 fpath = os.path.join(workspace, os.path.basename(fname))
