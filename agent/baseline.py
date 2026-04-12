@@ -1,5 +1,5 @@
 """
-NitpickAI — Baseline Agent.
+RuntimeTerror — Baseline Agent.
 
 A simple rule-based agent that:
 1. Runs tests to observe failures
@@ -19,7 +19,7 @@ from typing import Any
 
 
 class BaselineAgent:
-    """Rule-based baseline agent for the NitpickAI debugging environment."""
+    """Rule-based baseline agent for the RuntimeTerror debugging environment."""
 
     def __init__(self) -> None:
         self._step = 0
