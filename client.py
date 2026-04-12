@@ -1,5 +1,5 @@
 """
-NitpickAI Client.
+RuntimeTerror Client.
 
 Thin wrapper around the OpenEnv EnvClient.  When openenv-core is not
 installed the module defines a lightweight HTTP-based client instead.
@@ -10,8 +10,8 @@ from __future__ import annotations
 try:
     from openenv.core.mcp_client import MCPToolClient  # type: ignore[import-not-found]  # noqa: F401
 
-    class NitpickEnv(MCPToolClient):  # type: ignore[misc]
-        """Client for connecting to a NitpickAI server."""
+    class RuntimeTerrorEnv(MCPToolClient):  # type: ignore[misc]
+        """Client for connecting to a RuntimeTerror server."""
 
         pass  # MCPToolClient provides reset / step / state / call_tool
 
@@ -22,8 +22,8 @@ except ImportError:  # openenv-core not installed → use standalone HTTP client
 
     import requests
 
-    class NitpickEnv:  # type: ignore[no-redef]
-        """Minimal sync HTTP client for NitpickAI (no openenv-core)."""
+    class RuntimeTerrorEnv:  # type: ignore[no-redef]
+        """Minimal sync HTTP client for RuntimeTerror (no openenv-core)."""
 
         def __init__(self, base_url: str = "http://localhost:7860") -> None:
             self.base_url = base_url.rstrip("/")
