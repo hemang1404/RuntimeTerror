@@ -1,5 +1,5 @@
 """
-NitpickAI — LLM-Powered Debugging Agent.
+RuntimeTerror — LLM-Powered Debugging Agent.
 
 Uses an OpenAI-compatible API (Ollama locally, LiteLLM proxy in hackathon)
 to drive the debugging loop. The LLM reads code, reasons about bugs,
@@ -159,7 +159,7 @@ def parse_action(raw_response: str) -> dict[str, Any]:
 
 
 class LLMAgent:
-    """LLM-powered debugging agent for NitpickAI."""
+    """LLM-powered debugging agent for RuntimeTerror."""
 
     def __init__(self) -> None:
         self._client = create_client()
@@ -418,7 +418,7 @@ def main():
     """Run the LLM agent on a task."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="NitpickAI LLM Agent")
+    parser = argparse.ArgumentParser(description="RuntimeTerror LLM Agent")
     parser.add_argument("--task", default="easy_debug",
                         choices=["easy_debug", "medium_debug", "hard_debug"])
     parser.add_argument("--seed", type=int, default=42)
