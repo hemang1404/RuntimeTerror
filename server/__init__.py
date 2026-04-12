@@ -1,1 +1,1 @@
-# server package
+"""NitpickAI server package."""

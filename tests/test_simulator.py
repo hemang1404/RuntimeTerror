@@ -1,73 +1,56 @@
-"""Tests for the IncidentSimulator."""
+"""Tests for the CodeSimulator."""
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from server.simulator import IncidentSimulator
+from server.code_simulator import CodeSimulator
 from server.tasks import load_scenarios
 
 
-def _make_sim(task="easy_triage", idx=0):
-    return IncidentSimulator(load_scenarios(task)[idx])
+def _make_sim(task="easy_debug", idx=0):
+    return CodeSimulator(load_scenarios(task)[idx])
 
 
 class TestSimulator:
-    def test_query_logs_known_service(self):
+    def test_buggy_code_not_empty(self):
         sim = _make_sim()
-        service = sim.available_services[0]
-        output = sim.query_logs(service)
-        assert len(output) > 0, "Should return log entries"
+        assert len(sim.buggy_code) > 0
 
-    def test_query_logs_unknown_service(self):
+    def test_visible_tests_present(self):
         sim = _make_sim()
-        output = sim.query_logs("nonexistent-service")
-        assert "ERROR" in output
+        assert len(sim.visible_tests) > 0
 
-    def test_query_logs_with_keyword(self):
+    def test_hidden_tests_present(self):
         sim = _make_sim()
-        service = sim.available_services[0]
-        output = sim.query_logs(service, keyword="error")
-        # Should either find entries or return no-match message
-        assert len(output) > 0
+        assert len(sim.hidden_tests) > 0
 
-    def test_query_metrics(self):
+    def test_all_tests_is_union(self):
         sim = _make_sim()
-        metric = sim.available_metrics[0]
-        output = sim.query_metrics(metric)
-        assert "Metric:" in output
+        assert len(sim.all_tests) == len(sim.visible_tests) + len(sim.hidden_tests)
 
-    def test_inspect_code_known_file(self):
+    def test_ground_truth_present(self):
         sim = _make_sim()
-        fname = sim.available_files[0]
-        output = sim.inspect_code(fname)
-        assert "|" in output  # line numbers
+        assert len(sim.bug_description) > 0
+        assert len(sim.bug_keywords) > 0
+        assert len(sim.ground_truth_fix) > 0
 
-    def test_inspect_code_unknown_file(self):
+    def test_format_code_has_line_numbers(self):
         sim = _make_sim()
-        output = sim.inspect_code("does/not/exist.py")
-        assert "ERROR" in output
+        formatted = sim.format_code()
+        assert "|" in formatted
 
-    def test_run_diagnostic(self):
+    def test_format_visible_tests(self):
         sim = _make_sim()
-        cmd = sim.available_commands[0]
-        output = sim.run_diagnostic(cmd)
-        assert len(output) > 0
-
-    def test_run_diagnostic_unknown(self):
-        sim = _make_sim()
-        output = sim.run_diagnostic("rm -rf /")
-        assert "ERROR" in output
-
-    def test_ground_truth_accessible(self):
-        sim = _make_sim()
-        assert len(sim.root_cause_keywords) > 0
-        assert sim.buggy_file != ""
+        formatted = sim.format_visible_tests()
+        assert "Test 1" in formatted
 
     def test_all_scenarios_loadable(self):
-        for task in ["easy_triage", "medium_triage", "hard_triage"]:
+        for task in ["easy_debug", "medium_debug", "hard_debug"]:
             scenarios = load_scenarios(task)
             assert len(scenarios) == 5, f"{task} should have 5 scenarios"
             for s in scenarios:
-                sim = IncidentSimulator(s)
-                assert len(sim.available_services) > 0
-                assert len(sim.available_files) > 0
+                sim = CodeSimulator(s)
+                assert len(sim.buggy_code) > 0
+                assert len(sim.visible_tests) > 0
+                assert len(sim.hidden_tests) > 0
+                assert len(sim.ground_truth_fix) > 0

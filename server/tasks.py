@@ -1,14 +1,13 @@
 """
-IncidentEnv — Tasks and Deterministic Graders.
+NitpickAI — Tasks and Deterministic Graders.
 
 Defines 3 tasks (easy / medium / hard) and a deterministic grading function
-that scores agent performance on a 0.0–1.0 scale.
+that scores agent debugging performance on a 0.0–1.0 scale.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import random
 from pathlib import Path
 from typing import Any
@@ -16,26 +15,23 @@ from typing import Any
 # ── Task definitions ─────────────────────────────────────────────
 
 TASK_DEFINITIONS = {
-    "easy_triage": {
+    "easy_debug": {
         "difficulty": "easy",
         "data_file": "task_easy.json",
-        "description": "Single clear-cut root cause with obvious signal in logs.",
-        "max_investigation_steps": 10,
-        "max_remediation_steps": 5,
+        "description": "Obvious bugs: off-by-one, missing returns, wrong operators.",
+        "max_steps": 15,
     },
-    "medium_triage": {
+    "medium_debug": {
         "difficulty": "medium",
         "data_file": "task_medium.json",
-        "description": "Requires correlating signals from multiple services and metrics.",
-        "max_investigation_steps": 10,
-        "max_remediation_steps": 5,
+        "description": "Requires execution to detect: type coercion, mutable defaults, missing keys.",
+        "max_steps": 20,
     },
-    "hard_triage": {
+    "hard_debug": {
         "difficulty": "hard",
         "data_file": "task_hard.json",
-        "description": "Subtle bugs requiring deep investigation: race conditions, encoding issues, clock skew.",
-        "max_investigation_steps": 10,
-        "max_remediation_steps": 5,
+        "description": "Multi-step debugging: closures, generator exhaustion, cache corruption, float precision.",
+        "max_steps": 25,
     },
 }
 
@@ -43,7 +39,7 @@ DATA_DIR = Path(__file__).parent / "data"
 
 
 def load_scenarios(task_id: str) -> list[dict[str, Any]]:
-    """Load all incident scenarios for a given task."""
+    """Load all debugging scenarios for a given task."""
     task_def = TASK_DEFINITIONS.get(task_id)
     if task_def is None:
         raise ValueError(f"Unknown task: {task_id}. Available: {list(TASK_DEFINITIONS)}")
@@ -84,42 +80,39 @@ def _keyword_overlap(text: str, keywords: list[str]) -> float:
 
 
 def grade_episode(
-    root_cause_submitted: str,
-    root_cause_keywords: list[str],
-    queries_made: list[dict[str, Any]],
-    buggy_file: str,
+    issue_submitted: str,
+    bug_keywords: list[str],
+    execution_history: list[dict[str, Any]],
     fixes_attempted: int,
     fixes_passed: int,
-    max_investigation_steps: int,
-    investigation_steps_used: int,
     total_steps_used: int,
     max_total_steps: int,
 ) -> float:
-    """Compute a deterministic score in [0.0, 1.0] for one episode.
+    """Compute a deterministic score in [0.0, 1.0] for one debugging episode.
 
     Components (weighted):
-        root_cause_accuracy  (30%)  – keyword overlap
-        investigation_quality(15%)  – did agent inspect the buggy file?
-        fix_quality          (35%)  – fraction of fixes that passed tests
+        issue_accuracy       (25%)  – keyword overlap with ground truth bug
+        run_code_quality     (15%)  – did agent run code to investigate?
+        fix_quality          (40%)  – fraction of fixes that passed tests
         efficiency           (10%)  – step-usage ratio
-        decision_quality     (10%)  – submitted root cause at all?
+        decision_quality     (10%)  – submitted issue? attempted fix?
 
     Returns
     -------
     float
         Score clamped to [0.0, 1.0].
     """
-    # 1. Root-cause accuracy (30%)
-    root_cause_score = _keyword_overlap(root_cause_submitted, root_cause_keywords)
+    # 1. Issue accuracy (25%)
+    issue_score = _keyword_overlap(issue_submitted, bug_keywords)
 
-    # 2. Investigation quality (15%)
-    inspected_buggy = any(
-        q.get("action_type") == "inspect_code" and q.get("file") == buggy_file
-        for q in queries_made
+    # 2. Run code quality (15%) — did agent run code or tests?
+    ran_code = any(
+        h.get("action_type") in ("run_code", "run_tests")
+        for h in execution_history
     )
-    investigation_score = 1.0 if inspected_buggy else 0.0
+    run_code_score = 1.0 if ran_code else 0.0
 
-    # 3. Fix quality (35%)
+    # 3. Fix quality (40%)
     if fixes_attempted > 0:
         fix_score = fixes_passed / fixes_attempted
     else:
@@ -131,13 +124,15 @@ def grade_episode(
     else:
         efficiency_score = 0.0
 
-    # 5. Decision quality (10%) — did they submit a root cause?
-    decision_score = 1.0 if root_cause_submitted.strip() else 0.0
+    # 5. Decision quality (10%) — did they submit an issue and attempt a fix?
+    did_issue = 1.0 if issue_submitted.strip() else 0.0
+    did_fix = 1.0 if fixes_attempted > 0 else 0.0
+    decision_score = (did_issue + did_fix) / 2.0
 
     raw_score = (
-        0.30 * root_cause_score
-        + 0.15 * investigation_score
-        + 0.35 * fix_score
+        0.25 * issue_score
+        + 0.15 * run_code_score
+        + 0.40 * fix_score
         + 0.10 * efficiency_score
         + 0.10 * decision_score
     )

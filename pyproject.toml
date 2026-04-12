@@ -3,16 +3,16 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openenv-incident-env"
+name = "nitpick-ai"
 version = "0.1.0"
-description = "AI on-call incident response environment for OpenEnv — investigate, diagnose, and fix production incidents"
+description = "Interactive debugging benchmark for AI agents — find bugs, run code, submit fixes, get graded"
 requires-python = ">=3.10"
 dependencies = [
-    "openenv-core[core]>=0.2.2",
     "fastapi>=0.115.0",
     "pydantic>=2.0.0",
     "uvicorn>=0.24.0",
     "requests>=2.31.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -21,14 +21,21 @@ dev = [
     "pytest-cov>=4.0.0",
     "httpx>=0.27.0",
 ]
-inference = [
-    "openai>=1.0.0",
+ui = [
+    "gradio>=4.0.0",
 ]
 
 [project.scripts]
-server = "incident_env.server.app:main"
+server = "server.app:main"
 
 [tool.setuptools]
 include-package-data = true
-packages = ["incident_env", "incident_env.server"]
-package-dir = { "incident_env" = ".", "incident_env.server" = "server" }
+packages = ["server", "agent"]
+
+[tool.pyright]
+venvPath = "."
+extraPaths = ["."]
+pythonPlatform = "Windows"
+executionEnvironments = [
+  { root = ".", extraPaths = ["."] }
+]

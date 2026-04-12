@@ -1,8 +1,8 @@
 """
-IncidentEnv — Typed Pydantic Models.
+NitpickAI — Typed Pydantic Models.
 
 Defines the Action, Observation, and State models for the
-incident response simulation environment, compliant with OpenEnv spec.
+interactive debugging environment, compliant with OpenEnv spec.
 """
 
 from __future__ import annotations
@@ -38,99 +38,99 @@ except ImportError:  # pragma: no cover – standalone dev fallback
 # ───────────────────────────── Action ─────────────────────────────────────
 
 
-class IncidentAction(Action):
-    """Agent's action in the incident response environment.
+class DebugAction(Action):
+    """Agent's action in the interactive debugging environment.
 
-    Phase 1 — Investigation:
-        query_logs        – search service logs
-        query_metrics     – get time-series metric data
-        inspect_code      – view a source file
-        run_diagnostic    – run a shell-like diagnostic command
-        submit_root_cause – declare the root cause (ends Phase 1)
-
-    Phase 2 — Remediation:
-        suggest_fix         – submit a code patch (env runs tests)
-        submit_resolution   – finalise and end episode
+    Actions:
+        run_code          – execute a code snippet in the sandbox
+        run_tests         – run the visible test suite against current code
+        create_issue      – describe the identified bug
+        suggest_fix       – submit patched source code
+        request_changes   – finalize the episode (submit final decision)
     """
 
     action_type: str = Field(
         ...,
         description=(
-            "One of: query_logs, query_metrics, inspect_code, run_diagnostic, "
-            "submit_root_cause, suggest_fix, submit_resolution"
+            "One of: run_code, run_tests, create_issue, suggest_fix, "
+            "request_changes"
         ),
     )
 
-    # Investigation arguments
-    service: str = Field(default="", description="Target service name for log queries")
-    keyword: str = Field(default="", description="Log search keyword / filter")
-    metric: str = Field(default="", description="Metric name (e.g. cpu, error_rate)")
-    time_range: str = Field(
-        default="5m", description="Time range: 1m | 5m | 15m | 1h"
+    # run_code arguments
+    code: str = Field(
+        default="",
+        description="Code snippet to execute in the sandbox (for run_code)",
     )
-    file: str = Field(default="", description="File path to inspect or patch")
-    command: str = Field(default="", description="Diagnostic command string")
 
-    # Root-cause / fix arguments
-    root_cause: str = Field(default="", description="Agent's root-cause explanation")
+    # suggest_fix arguments
     patch_code: str = Field(
-        default="", description="Complete fixed file content (for suggest_fix)"
+        default="",
+        description="Complete fixed source code (for suggest_fix)",
     )
-    message: str = Field(default="", description="General message / notes")
+
+    # create_issue arguments
+    issue_description: str = Field(
+        default="",
+        description="Description of the identified bug (for create_issue)",
+    )
+
+    # request_changes arguments
+    message: str = Field(
+        default="",
+        description="Final notes / summary (for request_changes)",
+    )
 
 
 # ───────────────────────────── Observation ────────────────────────────────
 
 
-class IncidentObservation(Observation):
+class DebugObservation(Observation):
     """What the agent observes after each action (or on reset)."""
 
-    # Alert info (available from step 0)
-    alert_title: str = ""
-    alert_description: str = ""
-    severity_level: str = ""
-    affected_service: str = ""
+    # Source code under test
+    code: str = ""
+    visible_tests: list[str] = Field(default_factory=list)
 
-    # Investigation results (populated per-step)
-    output: str = ""
-    output_type: str = ""  # logs | metrics | code | diagnostic | test_result | info
-
-    # Discovery helpers – tell the agent what it can query
-    available_services: list[str] = Field(default_factory=list)
-    available_files: list[str] = Field(default_factory=list)
-    available_metrics: list[str] = Field(default_factory=list)
-    available_commands: list[str] = Field(default_factory=list)
+    # Execution results
+    execution_output: str = ""
+    test_results: str = ""
+    tests_passed: bool | None = None
 
     # Episode state
-    phase: str = "investigation"  # investigation | remediation
     step_number: int = 0
-    max_steps: int = 15  # 10 investigation + 5 remediation
+    max_steps: int = 20
     task_id: str = ""
     difficulty: str = ""
 
-    # Fix results (Phase 2 only)
-    test_output: str = ""
-    tests_passed: bool | None = None
+    # Action feedback
+    action_feedback: str = ""
 
 
 # ───────────────────────────── State ──────────────────────────────────────
 
 
-class IncidentState(State):
+class DebugState(State):
     """Internal environment state (returned by ``state()``)."""
 
     task_id: str = ""
     difficulty: str = ""
-    phase: str = "investigation"
-    incident_id: str = ""
 
-    # Investigation tracking
-    queries_made: list[dict[str, Any]] = Field(default_factory=list)
-    root_cause_submitted: str = ""
-    root_cause_correct: bool = False
-    root_cause_similarity: float = 0.0
+    # Source code
+    code: str = ""
+    visible_tests: list[str] = Field(default_factory=list)
+    hidden_tests: list[str] = Field(default_factory=list)
 
-    # Remediation tracking
+    # Debugging progress
+    execution_history: list[dict[str, Any]] = Field(default_factory=list)
+    last_output: str = ""
+
+    # Issue tracking
+    issue_submitted: str = ""
+    issue_correct: bool = False
+    issue_similarity: float = 0.0
+
+    # Fix tracking
     fixes_attempted: int = 0
     fixes_passed: int = 0
 
