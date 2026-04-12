@@ -1,5 +1,5 @@
 """
-NitpickAI — Typed Pydantic Models.
+RuntimeTerror — Typed Pydantic Models.
 
 Defines the Action, Observation, and State models for the
 interactive debugging environment, compliant with OpenEnv spec.
