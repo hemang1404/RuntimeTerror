@@ -121,39 +121,59 @@ async def ai_suggest_endpoint(session_id: str):
     from agent.llm_agent import LLMAgent
     try:
         agent = LLMAgent()
-        initial_action = agent.act(obs.model_dump())
-        atype = initial_action.get("action_type", "unknown")
+        max_internal_steps = 10
+        curr_obs_dict = obs.model_dump()
         
-        if atype == "suggest_fix":
-            patch = initial_action.get("patch_code", "")
-            # Auto-apply the patch in the backend to grab test results
-            test_obs = env.step({"action_type": "suggest_fix", "patch_code": patch})
+        for i in range(max_internal_steps):
+            action = agent.act(curr_obs_dict)
             
-            passed = test_obs.tests_passed
-            tests_summary = "✅ All tests successfully passed." if passed else "❌ Tests failed with this patch."
+            # Map common hallucinations to correct action types
+            atype = action.get("action_type", "unknown")
+            if atype in ["fix_code", "patch_code", "submit_fix"]:
+                atype = "suggest_fix"
             
-            review_comment = {
-                "issue_found": "Identified logical defect based on context execution and trace evaluation.",
-                "suggested_fix": patch,
-                "test_results": f"{tests_summary}\n\nLog:\n{test_obs.test_results}"
-            }
-            return JSONResponse({"suggestion": review_comment, "explanation": "AI generated a Code Review."})
-            
-        elif atype == "create_issue":
-            review_comment = {
-                "issue_found": initial_action.get("issue_description", "No explicit issue description."),
-                "suggested_fix": "No patch available yet.",
-                "test_results": "⚠️ N/A - requires exploratory fixes."
-            }
-            return JSONResponse({"suggestion": review_comment, "explanation": "AI identified an issue without a patch."})
-        else:
-            # Need exploratory execution? We simulate doing it internally or just return the output
-            exec_obs = env.step(initial_action)
-            return JSONResponse({"suggestion": None, "explanation": f"AI needs more context. It ran: {atype}. Internal state advanced."})
+            if atype == "suggest_fix":
+                patch = action.get("patch_code", "")
+                if not patch and "fix" in action:
+                    patch = action["fix"]
+                
+                # VALIDATION: Reject empty or tiny patches
+                if not patch or len(patch.strip()) < 40:
+                    curr_obs_dict["action_feedback"] = "ERROR: Your suggest_fix was empty or incomplete. You MUST provide the ENTIRE fixed Python source code for the file in 'patch_code'."
+                    continue
+                
+                test_obs = env.step({"action_type": "suggest_fix", "patch_code": patch})
+                passed = test_obs.tests_passed
+                tests_summary = "✅ All tests successfully passed." if passed else "❌ Tests failed with this patch."
+                
+                issue_desc = env._state.issue_submitted if hasattr(env._state, "issue_submitted") and env._state.issue_submitted else "Identified logical defect based on automated codebase exploration."
+                
+                review_comment = {
+                    "issue_found": issue_desc,
+                    "suggested_fix": patch,
+                    "test_results": f"{tests_summary}\n\nLog:\n{test_obs.test_results}"
+                }
+                return JSONResponse({"suggestion": review_comment, "explanation": f"AI synthesized a fix after {i+1} steps of analysis."})
+                
+            elif atype in ["run_code", "run_tests", "create_issue"]:
+                # Execute exploratory action and continue loop
+                obs_obj = env.step(action)
+                curr_obs_dict = obs_obj.model_dump()
+                continue
+            elif atype == "request_changes":
+                # Agent thinks it's done without fixing? 
+                return JSONResponse({"suggestion": None, "explanation": "AI ended session without providing a code patch."})
+            else:
+                return JSONResponse({"suggestion": None, "explanation": f"AI requested unknown action: {atype}"})
+                
+        return JSONResponse({"suggestion": None, "explanation": f"AI reached maximum exploration depth ({max_internal_steps} steps) without a conclusive fix."})
             
     except Exception as e:
         import traceback
+        traceback.print_exc()
         return JSONResponse({"suggestion": None, "explanation": f"AI error: {str(e)}"}, status_code=500)
+
+
 
 
 # ── WebSocket endpoint ───────────────────────────────────────────
