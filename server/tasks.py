@@ -1,5 +1,5 @@
 """
-NitpickAI — Tasks and Deterministic Graders.
+RuntimeTerror — Tasks and Deterministic Graders.
 
 Defines 3 tasks (easy / medium / hard) and a deterministic grading function
 that scores agent debugging performance on a 0.0–1.0 scale.
