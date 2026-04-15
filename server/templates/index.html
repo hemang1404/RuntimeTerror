@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RuntimeTerror — AI PR Review Platform</title>
+    <script>
+        (function() {
+            const theme = localStorage.getItem('theme');
+            if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else if (theme === 'light') {
+                document.documentElement.classList.remove('dark');
+            } else {
+                document.documentElement.classList.add('dark'); // Default dark
+            }
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -17,59 +29,117 @@
                         mono: ['JetBrains Mono', 'monospace'],
                     },
                     colors: {
-                        background: '#0a0a0a',
-                        surface: '#111111',
-                        surfaceHover: '#1c1c1c',
-                        border: '#2a2a2a',
-                        textPrimary: '#ededed',
-                        textSecondary: '#a1a1aa',
-                        accent: '#3b82f6',
-                        accentHover: '#2563eb',
-                        danger: '#ef4444',
-                        success: '#10b981',
-                        githubBg: '#0d1117',
-                        githubBorder: '#30363d',
+                        background: 'var(--bg)',
+                        surface: 'var(--surface)',
+                        surfaceHover: 'var(--surface-hover)',
+                        border: 'var(--border)',
+                        textPrimary: 'var(--text-primary)',
+                        textSecondary: 'var(--text-secondary)',
+                        accent: 'var(--accent)',
+                        accentHover: 'var(--accent-hover)',
+                        danger: 'var(--danger)',
+                        success: 'var(--success)',
+                        githubBg: 'var(--github-bg)',
+                        githubBorder: 'var(--github-border)',
                     }
                 }
             }
         }
     </script>
     <style>
-        body { background-color: #0a0a0a; color: #ededed; overflow-x: hidden; }
+        :root {
+            --bg: #ffffff;
+            --surface: #f4f4f5;
+            --surface-hover: #e4e4e7;
+            --border: #d4d4d8;
+            --text-primary: #171717;
+            --text-secondary: #52525b;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --danger: #ef4444;
+            --success: #10b981;
+            --github-bg: #f6f8fa;
+            --github-border: #d0d7de;
+            --scrollbar: #d4d4d8;
+            --scrollbar-hover: #a1a1aa;
+            --btn-primary-bg: #171717;
+            --btn-primary-text: #ffffff;
+            --btn-primary-hover: #404040;
+            --btn-secondary-bg: #ffffff;
+            --btn-secondary-text: #171717;
+            --btn-secondary-hover: #f4f4f5;
+            --code-bg: #f8fafc;
+            --code-text: #0f172a;
+            --tag-bg: #e4e4e7;
+            --tag-text: #52525b;
+            --toast-bg: #ffffff;
+            --toast-text: #171717;
+        }
+
+        .dark {
+            --bg: #0a0a0a;
+            --surface: #111111;
+            --surface-hover: #1c1c1c;
+            --border: #2a2a2a;
+            --text-primary: #ededed;
+            --text-secondary: #a1a1aa;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --danger: #ef4444;
+            --success: #10b981;
+            --github-bg: #0d1117;
+            --github-border: #30363d;
+            --scrollbar: #2a2a2a;
+            --scrollbar-hover: #3f3f46;
+            --btn-primary-bg: #ededed;
+            --btn-primary-text: #0a0a0a;
+            --btn-primary-hover: #d4d4d8;
+            --btn-secondary-bg: #111111;
+            --btn-secondary-text: #ededed;
+            --btn-secondary-hover: #1c1c1c;
+            --code-bg: #0a0a0a;
+            --code-text: #e2e8f0;
+            --tag-bg: #2a2a2a;
+            --tag-text: #a1a1aa;
+            --toast-bg: #2a2a2a;
+            --toast-text: #ffffff;
+        }
+
+        body { background-color: var(--bg); color: var(--text-primary); overflow-x: hidden; transition: background-color 0.3s, color 0.3s; }
         .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
         
-        .panel { background: #111111; border: 1px solid #2a2a2a; border-radius: 8px; }
-        textarea.code-font { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: #e2e8f0; background: #0a0a0a; border: 1px solid #2a2a2a; resize: none; border-radius: 6px; padding: 12px; outline: none; }
-        textarea.code-font:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
-        pre.code-font { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: #e2e8f0; background: #0a0a0a; border: 1px solid #2a2a2a; padding: 12px; border-radius: 6px; white-space: pre-wrap; overflow-y: auto;}
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+        textarea.code-font { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); border: 1px solid var(--border); resize: none; border-radius: 6px; padding: 12px; outline: none; transition: background-color 0.3s, color 0.3s; }
+        textarea.code-font:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+        pre.code-font { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); border: 1px solid var(--border); padding: 12px; border-radius: 6px; white-space: pre-wrap; overflow-y: auto;}
 
         .btn { padding: 8px 16px; border-radius: 6px; font-weight: 500; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; cursor: pointer; border: 1px solid transparent; }
-        .btn-primary { background: #ededed; color: #0a0a0a; }
-        .btn-primary:hover { background: #d4d4d8; }
-        .btn-secondary { background: #111111; color: #ededed; border: 1px solid #2a2a2a; }
-        .btn-secondary:hover { background: #1c1c1c; border-color: #3f3f46; }
+        .btn-primary { background: var(--btn-primary-bg); color: var(--btn-primary-text); }
+        .btn-primary:hover { background: var(--btn-primary-hover); }
+        .btn-secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--btn-secondary-hover); border-color: var(--scrollbar-hover); }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .tag { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: #2a2a2a; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.5px;}
+        .tag { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: var(--tag-bg); color: var(--tag-text); text-transform: uppercase; letter-spacing: 0.5px;}
         
         #toast {
-            position: fixed; top: 20px; right: 20px; padding: 12px 20px; background: #2a2a2a; color: #fff; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 50; display: flex; align-items: center; gap: 10px; border-left: 4px solid #3b82f6;
+            position: fixed; top: 20px; right: 20px; padding: 12px 20px; background: var(--toast-bg); color: var(--toast-text); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 50; display: flex; align-items: center; gap: 10px; border-left: 4px solid var(--accent);
         }
 
         .spinner { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
         /* GitHub Comment Styling */
-        .github-comment { background: var(--githubBg); border: 1px solid var(--githubBorder); border-radius: 6px; overflow: hidden; }
-        .github-comment-header { background: #161b22; border-bottom: 1px solid var(--githubBorder); padding: 8px 16px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
-        .github-comment-body { padding: 16px; font-size: 14px; color: #c9d1d9; }
-        .github-code-block { background: #161b22; border: 1px solid var(--githubBorder); border-radius: 6px; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px; margin: 12px 0; overflow-x: auto; color: #e5e5e5; }
+        .github-comment { background: var(--github-bg); border: 1px solid var(--github-border); border-radius: 6px; overflow: hidden; }
+        .github-comment-header { background: var(--surface); border-bottom: 1px solid var(--github-border); padding: 8px 16px; font-size: 13px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+        .github-comment-body { padding: 16px; font-size: 14px; color: var(--text-primary); }
+        .github-code-block { background: var(--surface); border: 1px solid var(--github-border); border-radius: 6px; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px; margin: 12px 0; overflow-x: auto; color: var(--text-primary); }
     </style>
 </head>
-<body class="h-screen flex flex-col font-sans">
+<body class="h-screen flex flex-col font-sans bg-background">
     
     <div id="toast"><i data-lucide="info"></i><span id="toast-msg"></span></div>
 
@@ -90,6 +160,10 @@
                 <div id="statusIndicator" class="ml-4 flex items-center gap-2 text-xs">
                     <span id="stateStatus" class="flex items-center gap-1 text-danger font-medium"><div class="w-2 h-2 rounded-full bg-danger"></div> Missing PR</span>
                 </div>
+                <button id="themeToggleBtn" class="ml-4 p-2 rounded-lg bg-surface border border-border text-textSecondary hover:text-accent hover:border-accent transition-colors">
+                    <i data-lucide="moon" class="w-4 h-4 hidden dark:block"></i>
+                    <i data-lucide="sun" class="w-4 h-4 block dark:hidden"></i>
+                </button>
             </div>
         </div>
         
@@ -98,9 +172,9 @@
             <button class="demo-btn text-[10px] bg-background border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/3">1. Off-By-One</button>
             <button class="demo-btn text-[10px] bg-background border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/2">2. Zero Division</button>
             <button class="demo-btn text-[10px] bg-background border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/1">3. Broken Parser</button>
-            <button class="demo-btn text-[10px] bg-[#1a1a1a] border border-accent/30 text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/4">4. Line Counter</button>
-            <button class="demo-btn text-[10px] bg-[#1a1a1a] border border-accent/30 text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/5">5. Factorial</button>
-            <button class="demo-btn text-[10px] bg-[#1a1a1a] border border-accent/30 text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/6">6. Email Lookup</button>
+            <button class="demo-btn text-[10px] bg-surfaceHover border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/4">4. Line Counter</button>
+            <button class="demo-btn text-[10px] bg-surfaceHover border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/5">5. Factorial</button>
+            <button class="demo-btn text-[10px] bg-surfaceHover border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/6">6. Email Lookup</button>
         </div>
     </header>
 
@@ -122,18 +196,18 @@
         </div>
 
         <!-- Right Pane (AI Review Flow) -->
-        <div class="w-1/2 flex flex-col bg-[#0d0d0d] custom-scrollbar overflow-y-auto">
+        <div class="w-1/2 flex flex-col bg-surface custom-scrollbar overflow-y-auto">
             <div class="p-6 flex flex-col gap-6">
                 
                 <div class="flex items-center justify-between">
                     <h2 class="text-lg font-semibold text-textPrimary">Auto-Review Pipeline</h2>
-                    <button id="askAiBtn" class="btn btn-secondary border-accent text-[#8b9cf6] hover:bg-accent/10 shadow-[0_0_15px_rgba(59,130,246,0.15)]" disabled>
+                    <button id="askAiBtn" class="btn btn-secondary border-accent text-accent hover:bg-accent/10 shadow-[0_0_15px_rgba(59,130,246,0.15)]" disabled>
                         <i data-lucide="sparkles" class="w-4 h-4 text-accent"></i> Analyze PR
                     </button>
                 </div>
 
                 <!-- Status Feedback -->
-                <p id="actionFeedback" class="text-sm text-textSecondary leading-relaxed bg-[#111111] p-4 rounded-lg border border-[#2a2a2a]">Waiting for PR to be fetched...</p>
+                <p id="actionFeedback" class="text-sm text-textSecondary leading-relaxed bg-surface p-4 rounded-lg border border-border">Waiting for PR to be fetched...</p>
 
                 <!-- GitHub Suggested Review Comment Box -->
                 <div id="reviewBox" class="hidden flex flex-col gap-3">
@@ -142,20 +216,20 @@
                     <div class="github-comment">
                         <div class="github-comment-header">
                             <i data-lucide="bot" class="w-4 h-4"></i>
-                            <span class="font-semibold text-white">runtimeterror-bot</span> commented just now
+                            <span class="font-semibold text-textPrimary">runtimeterror-bot</span> commented just now
                         </div>
                         <div class="github-comment-body">
                             <p class="mb-4">Hello! I've analyzed this PR. Here is my review:</p>
                             
-                            <h4 class="font-semibold text-white mb-2">🐛 Issue Identified</h4>
+                            <h4 class="font-semibold text-textPrimary mb-2">🐛 Issue Identified</h4>
                             <p id="reviewIssue" class="mb-4 text-sm"></p>
                             
-                            <h4 class="font-semibold text-white mb-2">💡 Suggested Patch</h4>
+                            <h4 class="font-semibold text-textPrimary mb-2">💡 Suggested Patch</h4>
                             <p class="text-sm mb-2">I recommend the following modifications to resolve the underlying failure:</p>
                             <pre id="reviewPatch" class="github-code-block"></pre>
                             
-                            <h4 class="font-semibold text-white mb-2">🧪 Test Verification</h4>
-                            <pre id="reviewTests" class="github-code-block text-xs !bg-[#000000] !border-border"></pre>
+                            <h4 class="font-semibold text-textPrimary mb-2">🧪 Test Verification</h4>
+                            <pre id="reviewTests" class="github-code-block text-xs !bg-background !border-border"></pre>
                         </div>
                     </div>
                     
@@ -164,7 +238,7 @@
                     </div>
                     
                     <div class="flex justify-end gap-3 mt-2">
-                        <button id="copyPatchBtn" class="hidden btn btn-secondary text-textPrimary !bg-[#21262d] border-[#30363d] hover:bg-[#30363d] shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+                        <button id="copyPatchBtn" class="hidden btn btn-secondary text-textPrimary !bg-surface border-border hover:bg-surfaceHover shadow-[0_0_10px_rgba(255,255,255,0.05)]">
                             <i data-lucide="copy" class="w-4 h-4"></i> Copy Patch to Clipboard
                         </button>
                         <button id="postCommentBtn" class="hidden btn btn-primary bg-success hover:bg-[#059669] text-white !border-none shadow-[0_0_10px_rgba(16,185,129,0.3)]">
@@ -373,6 +447,17 @@
             }
         });
         
+        document.getElementById('themeToggleBtn').addEventListener('click', () => {
+            const html = document.documentElement;
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+
         DOM.copyPatchBtn.addEventListener('click', () => {
             const issueText = DOM.reviewIssue.innerText;
             const patchText = DOM.reviewPatch.innerText;
