@@ -201,3 +201,50 @@ class CodeExecutor:
             errors = int(m.group(1))
         total = passed + failed + errors
         return total, passed
+
+    # ── Incident Environment Support (WIP) ───────────────────────
+
+    def run_fix(
+        self,
+        original_files: dict[str, str],
+        patch: dict[str, str],
+        test_code: str,
+        timeout: int | None = None,
+    ) -> ExecutionResult:
+        """Apply a patch to original files and run tests (WIP).
+
+        Parameters
+        ----------
+        original_files : dict[str, str]
+            Mapping of filename -> original content.
+        patch : dict[str, str]
+            Mapping of filename -> patched content (overrides originals).
+        test_code : str
+            Test file content to run against the patched code.
+        timeout : int | None
+            Execution timeout in seconds.
+        """
+        timeout = timeout or self.TIMEOUT_SECONDS
+
+        # Merge originals with patches
+        merged = {**original_files, **patch}
+
+        # Build a combined source from all files
+        combined = "\n\n".join(
+            f"# === {fname} ===\n{content}"
+            for fname, content in merged.items()
+        )
+
+        if not test_code:
+            return ExecutionResult(
+                passed=True,
+                stdout="No tests to run.",
+                exit_code=0,
+            )
+
+        return self.run_tests(
+            source_code=combined,
+            test_sources=[test_code],
+            timeout=timeout,
+        )
+
