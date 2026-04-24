@@ -132,6 +132,26 @@
         .spinner { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
+        /* Agent Step Timeline */
+        .step-item {
+            display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px;
+            border-left: 2px solid var(--border); margin-left: 8px;
+            animation: stepFadeIn 0.3s ease-out;
+        }
+        .step-item.active { border-left-color: var(--accent); }
+        .step-item.success { border-left-color: var(--success); }
+        .step-item.error { border-left-color: var(--danger); }
+        .step-dot {
+            width: 8px; height: 8px; border-radius: 50%; margin-top: 5px;
+            flex-shrink: 0; background: var(--border);
+        }
+        .step-item.active .step-dot { background: var(--accent); box-shadow: 0 0 8px rgba(59,130,246,0.5); }
+        .step-item.success .step-dot { background: var(--success); }
+        .step-item.error .step-dot { background: var(--danger); }
+        @keyframes stepFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .step-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+        .step-feedback { font-size: 13px; color: var(--text-primary); }
+
         /* GitHub Comment Styling */
         .github-comment { background: var(--github-bg); border: 1px solid var(--github-border); border-radius: 6px; overflow: hidden; }
         .github-comment-header { background: var(--surface); border-bottom: 1px solid var(--github-border); padding: 8px 16px; font-size: 13px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
@@ -175,6 +195,8 @@
             <button class="demo-btn text-[10px] bg-surfaceHover border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/4">4. Line Counter</button>
             <button class="demo-btn text-[10px] bg-surfaceHover border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/5">5. Factorial</button>
             <button class="demo-btn text-[10px] bg-surfaceHover border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/6">6. Email Lookup</button>
+            <button class="demo-btn text-[10px] bg-surfaceHover border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/7">7. Config Bleed (Medium)</button>
+            <button class="demo-btn text-[10px] bg-surfaceHover border border-border text-accent px-2 py-0.5 rounded hover:bg-accent/10 transition-colors" data-url="https://github.com/hemang1404/dummy-bench/pull/8">8. Pagination Truncation (Medium)</button>
         </div>
     </header>
 
@@ -208,6 +230,15 @@
 
                 <!-- Status Feedback -->
                 <p id="actionFeedback" class="text-sm text-textSecondary leading-relaxed bg-surface p-4 rounded-lg border border-border">Waiting for PR to be fetched...</p>
+
+                <!-- Agent Step Timeline (populated via SSE) -->
+                <div id="agentSteps" class="hidden flex flex-col gap-0 bg-background rounded-lg border border-border p-3 max-h-[280px] overflow-y-auto custom-scrollbar">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i data-lucide="brain" class="w-4 h-4 text-accent"></i>
+                        <span class="text-xs font-semibold text-textSecondary uppercase tracking-wider">Agent Reasoning Trace</span>
+                    </div>
+                    <div id="stepsContainer"></div>
+                </div>
 
                 <!-- GitHub Suggested Review Comment Box -->
                 <div id="reviewBox" class="hidden flex flex-col gap-3">
@@ -352,57 +383,114 @@
             }
         }
 
+        function addStep(stepNum, action, feedback, cssClass = 'active') {
+            const container = document.getElementById('stepsContainer');
+            const div = document.createElement('div');
+            div.className = `step-item ${cssClass}`;
+            div.innerHTML = `
+                <div class="step-dot"></div>
+                <div>
+                    <div class="step-label">Step ${stepNum} · ${action}</div>
+                    <div class="step-feedback">${feedback}</div>
+                </div>
+            `;
+            container.appendChild(div);
+            // Auto-scroll to bottom
+            const panel = document.getElementById('agentSteps');
+            panel.scrollTop = panel.scrollHeight;
+        }
+
+        function renderReviewResult(data) {
+            if(data.suggestion) {
+                DOM.actionFeedback.innerHTML = `<strong class="text-success"><i data-lucide="check-circle" class="w-4 h-4 inline"></i> Analysis Complete</strong><br/>${data.explanation}`;
+                
+                const sug = data.suggestion;
+                DOM.reviewIssue.innerText = sug.issue_found || "No obvious issue description gathered.";
+                DOM.reviewPatch.innerText = sug.suggested_fix || "No patch suggested by AI iteration.";
+                DOM.reviewTests.innerText = sug.test_results || "N/A";
+                
+                DOM.reviewBox.classList.remove('hidden');
+                
+                const isDemoRepo = DOM.prUrlInput.value.includes("hemang1404/");
+                if (isDemoRepo) {
+                    DOM.postCommentBtn.classList.remove('hidden');
+                    DOM.copyPatchBtn.classList.add('hidden');
+                    DOM.demoFlair.classList.remove('hidden');
+                    
+                    if (sug.passed === false) {
+                        DOM.postCommentBtn.disabled = true;
+                        DOM.postCommentBtn.innerHTML = '<i data-lucide="shield-alert" class="w-4 h-4"></i> Blocked: Fix Failed Tests';
+                        DOM.postCommentBtn.classList.replace('bg-success', 'bg-[#ef4444]');
+                    } else {
+                        DOM.postCommentBtn.disabled = false;
+                        DOM.postCommentBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i> Post Comment & Approve';
+                        DOM.postCommentBtn.classList.replace('bg-[#ef4444]', 'bg-success');
+                    }
+                } else {
+                    DOM.postCommentBtn.classList.add('hidden');
+                    DOM.copyPatchBtn.classList.remove('hidden');
+                    DOM.demoFlair.classList.add('hidden');
+                }
+            } else {
+                DOM.actionFeedback.innerHTML = `<strong class="text-danger">Incomplete Execution</strong><br/>${data.explanation}`;
+            }
+        }
+
         async function analyzePR() {
             if(!sessionId || isDone) return;
             setStatus(true, "");
-            DOM.actionFeedback.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 spinner inline-block text-accent"></i> AI is currently evaluating the repository Diff and test suites...';
+            DOM.actionFeedback.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 spinner inline-block text-accent"></i> AI agent launching...';
             lucide.createIcons();
-            
+
+            // Reset step panel
+            const agentSteps = document.getElementById('agentSteps');
+            const stepsContainer = document.getElementById('stepsContainer');
+            stepsContainer.innerHTML = '';
+            agentSteps.classList.remove('hidden');
+            DOM.reviewBox.classList.add('hidden');
+
             try {
-                const res = await fetch(`/ai_suggest/${sessionId}`, { method: 'POST' });
-                const data = await res.json();
-                
-                if(data.suggestion) {
-                    DOM.actionFeedback.innerHTML = `<strong class="text-success"><i data-lucide="check-circle" class="w-4 h-4 inline"></i> Analysis Complete</strong><br/>${data.explanation}`;
-                    
-                    // Render the Mock GitHub Comment structure
-                    const sug = data.suggestion;
-                    DOM.reviewIssue.innerText = sug.issue_found || "No obvious issue description gathered.";
-                    DOM.reviewPatch.innerText = sug.suggested_fix || "No patch suggested by AI iteration.";
-                    DOM.reviewTests.innerText = sug.test_results || "N/A";
-                    
-                    DOM.reviewBox.classList.remove('hidden');
-                    
-                    // Activate conditional UI buttons based on UX spec
-                    const isDemoRepo = DOM.prUrlInput.value.includes("hemang1404/");
-                    if (isDemoRepo) {
-                        DOM.postCommentBtn.classList.remove('hidden');
-                        DOM.copyPatchBtn.classList.add('hidden');
-                        DOM.demoFlair.classList.remove('hidden');
-                        
-                        // SAFETY LOCK: Block Post & Approve if tests FAILED
-                        if (sug.passed === false) {
-                            DOM.postCommentBtn.disabled = true;
-                            DOM.postCommentBtn.innerHTML = '<i data-lucide="shield-alert" class="w-4 h-4"></i> Blocked: Fix Failed Tests';
-                            DOM.postCommentBtn.classList.replace('bg-success', 'bg-[#ef4444]');
-                        } else {
-                            DOM.postCommentBtn.disabled = false;
-                            DOM.postCommentBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i> Post Comment & Approve';
-                            DOM.postCommentBtn.classList.replace('bg-[#ef4444]', 'bg-success');
+                const evtSource = new EventSource(`/ai_suggest_stream/${sessionId}`);
+
+                evtSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.done) {
+                        evtSource.close();
+                        // Mark last step as success or error
+                        const lastStep = stepsContainer.lastElementChild;
+                        if (lastStep) {
+                            lastStep.classList.remove('active');
+                            lastStep.classList.add(data.suggestion ? 'success' : 'error');
                         }
-                    } else {
-                        DOM.postCommentBtn.classList.add('hidden');
-                        DOM.copyPatchBtn.classList.remove('hidden');
-                        DOM.demoFlair.classList.add('hidden');
+                        addStep('✓', 'complete', data.suggestion ? '✅ Review ready' : '⚠️ ' + data.explanation, data.suggestion ? 'success' : 'error');
+                        renderReviewResult(data);
+                        setStatus(false);
+                        lucide.createIcons();
+                        return;
                     }
-                } else {
-                    DOM.actionFeedback.innerHTML = `<strong class="text-danger">Incomplete Execution</strong><br/>${data.explanation}`;
-                }
+
+                    // Mark previous steps as completed
+                    const prevSteps = stepsContainer.querySelectorAll('.step-item.active');
+                    prevSteps.forEach(s => { s.classList.remove('active'); });
+
+                    const cssClass = data.action === 'fix_failed' ? 'error' : 'active';
+                    addStep(data.step, data.action, data.feedback, cssClass);
+
+                    DOM.actionFeedback.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 spinner inline-block text-accent"></i> Step ${data.step}: ${data.feedback}`;
+                    lucide.createIcons();
+                };
+
+                evtSource.onerror = (err) => {
+                    evtSource.close();
+                    DOM.actionFeedback.innerText = "Connection lost. Please try again.";
+                    setStatus(false);
+                };
+
             } catch (e) {
                 DOM.actionFeedback.innerText = "CRITICAL ERROR: AI generation halted.";
+                setStatus(false);
             }
-            setStatus(false);
-            lucide.createIcons();
         }
 
         DOM.fetchPrBtn.addEventListener('click', fetchPR);
