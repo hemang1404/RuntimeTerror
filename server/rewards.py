@@ -107,3 +107,85 @@ def compute_request_changes_reward(
 def truncation_penalty() -> float:
     """Penalty applied when the episode is truncated (max steps exceeded)."""
     return -0.3
+
+
+# ── Incident Environment Rewards (WIP) ──────────────────────────────────
+# Stubs for the incident response workflow under development.
+
+
+def compute_investigation_reward(
+    action: dict,
+    simulator: object,
+    queries_made: list[dict],
+) -> float:
+    """Return the immediate reward for an investigation action (WIP).
+
+    Parameters
+    ----------
+    action : dict
+        The action taken by the agent.
+    simulator : IncidentSimulator
+        The simulator instance (used for ground truth).
+    queries_made : list[dict]
+        History of previous queries for duplicate detection.
+    """
+    atype = action.get("action_type", "")
+
+    # Penalize exact duplicate queries
+    for prev in queries_made:
+        if prev == action:
+            return -0.1
+
+    if atype == "submit_root_cause":
+        # Reward based on root cause accuracy
+        root_cause = action.get("root_cause", "")
+        keywords = getattr(simulator, "root_cause_keywords", [])
+        overlap = _keyword_overlap(root_cause, keywords)
+        if overlap >= 0.5:
+            return 0.3
+        if overlap >= 0.3:
+            return 0.15
+        return -0.1
+
+    # Small positive reward for exploratory actions
+    if atype in ("query_logs", "query_metrics", "inspect_code", "run_diagnostic"):
+        return 0.05
+
+    return 0.0
+
+
+def compute_remediation_reward(
+    action: dict,
+    test_passed: bool = False,
+    some_passed: bool = False,
+    timed_out: bool = False,
+) -> float:
+    """Return the immediate reward for a remediation action (WIP).
+
+    Parameters
+    ----------
+    action : dict
+        The action taken by the agent.
+    test_passed : bool
+        Whether all tests passed after the fix.
+    some_passed : bool
+        Whether some (but not all) tests passed.
+    timed_out : bool
+        Whether test execution timed out.
+    """
+    atype = action.get("action_type", "")
+
+    if atype == "suggest_fix":
+        if test_passed:
+            return 0.5
+        if some_passed:
+            return 0.2
+        if timed_out:
+            return -0.1
+        return -0.3
+
+    if atype == "submit_resolution":
+        return 0.0  # Score determined by finalize_grading
+
+    return 0.0
+
