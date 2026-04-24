@@ -25,7 +25,6 @@ from .rewards import (
 from .simulator import IncidentSimulator
 from .tasks import (
     TASK_DEFINITIONS,
-    grade_episode,
     pick_scenario,
 )
 
@@ -56,7 +55,54 @@ VALID_REMEDIATION_ACTIONS = {
 }
 
 
+def _grade_incident_episode(
+    root_cause_submitted: str,
+    root_cause_keywords: list[str],
+    queries_made: list[dict],
+    buggy_file: str,
+    fixes_attempted: int,
+    fixes_passed: int,
+    max_investigation_steps: int,
+    investigation_steps_used: int,
+    total_steps_used: int,
+    max_total_steps: int,
+) -> float:
+    """Deterministic grader for incident episodes (WIP).
+
+    Components:
+        root_cause_accuracy  (30%) — keyword overlap
+        investigation_quality (15%) — did agent query relevant data?
+        fix_quality          (35%) — fraction of fixes that passed
+        efficiency           (10%) — step-usage ratio
+        decision_quality     (10%) — submitted root cause? attempted fix?
+    """
+    # 1. Root cause accuracy
+    rc_score = _keyword_overlap(root_cause_submitted, root_cause_keywords)
+
+    # 2. Investigation quality — did agent inspect the buggy file?
+    inspected_buggy = any(
+        q.get("action_type") == "inspect_code" and q.get("file") == buggy_file
+        for q in queries_made
+    )
+    inv_score = 1.0 if inspected_buggy else 0.5 if queries_made else 0.0
+
+    # 3. Fix quality
+    fix_score = (fixes_passed / fixes_attempted) if fixes_attempted > 0 else 0.0
+
+    # 4. Efficiency
+    eff_score = max(0.0, 1.0 - (total_steps_used / max_total_steps)) if max_total_steps > 0 else 0.0
+
+    # 5. Decision quality
+    did_rc = 1.0 if root_cause_submitted.strip() else 0.0
+    did_fix = 1.0 if fixes_attempted > 0 else 0.0
+    dec_score = (did_rc + did_fix) / 2.0
+
+    raw = 0.30 * rc_score + 0.15 * inv_score + 0.35 * fix_score + 0.10 * eff_score + 0.10 * dec_score
+    return round(max(0.0, min(1.0, raw)), 4)
+
+
 class IncidentEnvironment(Environment):
+
     """Two-phase incident-response simulation environment."""
 
     def __init__(self) -> None:
@@ -328,7 +374,7 @@ class IncidentEnvironment(Environment):
             1 for q in self._state.queries_made
             if q.get("action_type") in VALID_INVESTIGATION_ACTIONS
         )
-        self._state.grader_score = grade_episode(
+        self._state.grader_score = _grade_incident_episode(
             root_cause_submitted=self._state.root_cause_submitted,
             root_cause_keywords=self._simulator.root_cause_keywords,
             queries_made=self._state.queries_made,
