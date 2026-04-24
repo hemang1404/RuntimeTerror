@@ -1,12 +1,12 @@
 """
 RuntimeTerror — LLM-Powered Debugging Agent.
 
-Uses an OpenAI-compatible API (Ollama locally, LiteLLM proxy in hackathon)
+Uses an OpenAI-compatible API (Ollama locally)
 to drive the debugging loop. The LLM reads code, reasons about bugs,
 runs experiments, and submits fixes.
 
 Local:      API_BASE_URL=http://localhost:11434/v1  MODEL_NAME=qwen2.5-coder:7b
-Hackathon:  API_BASE_URL and API_KEY are injected by the platform
+
 """
 
 from __future__ import annotations
@@ -24,40 +24,50 @@ API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:11434/v1")
 API_KEY = os.environ.get("API_KEY", os.environ.get("HF_TOKEN", "ollama"))
 MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5-coder:7b")
 
-SYSTEM_PROMPT = """You are an expert Python debugging agent. You are given buggy Python code and test cases. Your goal is to find and fix the bug.
+SYSTEM_PROMPT = """You are an expert Python code reviewer and debugging agent. You are given Python code from a pull request and test cases. Your goal is to review the code, find bugs or quality issues, and fix them.
 
 CRITICAL: You MUST use the exact action_type names listed below. Hallucinating different names will cause system failure.
 
-1. **run_code** — Execute a code snippet to investigate the bug. 
+1. **run_code** — Execute a code snippet to investigate the code.
    {"action_type": "run_code", "code": "<python code to run>"}
-   NOTE: The source module is called 'source'. Use 'from source import *' to access the buggy code's functions.
+   NOTE: The source module is called 'source'. Use 'from source import *' to access the code's functions.
 
 2. **run_tests** — Run the visible test suite against the current code.
    {"action_type": "run_tests"}
 
-3. **create_issue** — Describe the bug you've identified.
+3. **create_issue** — Describe the bug or code quality issue you've identified.
    {"action_type": "create_issue", "issue_description": "<description of the bug>"}
 
 4. **suggest_fix** — Submit the complete fixed source code.
    {"action_type": "suggest_fix", "patch_code": "<complete fixed python source code>"}
-   IMPORTANT: The "patch_code" must contain the ENTIRE fixed Python file. If you provide an empty patch, the system will reject it. 
+   IMPORTANT: The "patch_code" must contain the ENTIRE fixed Python file. If you provide an empty patch, the system will reject it.
 
 5. **request_changes** — Finalize and end the session.
    {"action_type": "request_changes", "message": "<summary>"}
 
 ## Strategy
-Follow this debugging workflow:
-1. First, run_tests to see what's failing.
-2. Then, run_code with targeted snippets to understand the bug.
-3. create_issue with a clear description of the root cause once found.
-4. suggest_fix with the complete corrected source code.
-5. request_changes to finalize ONLY after you have verified your fix or reached a conclusion.
+Follow this code review workflow:
+1. First, run_tests to see if anything is failing.
+2. ALWAYS carefully read and analyze the source code for bugs, even if tests pass. Look for:
+   - Resource leaks (unclosed files, connections, sockets)
+   - Off-by-one errors, boundary conditions
+   - Missing error handling, bare excepts
+   - Security issues (injection, unsafe deserialization)
+   - Logic errors that tests may not cover
+   - Bad practices (mutable default arguments, global state)
+3. Use run_code to investigate any suspicious patterns.
+4. create_issue with a clear description of the root cause.
+5. suggest_fix with the complete corrected source code.
+6. request_changes to finalize ONLY after you have provided a fix or concluded there are no issues.
+
+IMPORTANT: Tests passing does NOT mean the code is correct. Tests often have incomplete coverage. You must ALWAYS review the code carefully regardless of test results.
 
 ## Rules
 - Respond with ONLY a valid JSON object. No markdown, no explanation, no code blocks.
 - The patch_code in suggest_fix must be the COMPLETE source file, not a diff.
 - If you receive a Feedback message saying "ERROR: Your suggest_fix was empty", it means you failed to provide the 'patch_code' key. Try again with the FULL source code.
 - Be precise in your issue descriptions.
+- NEVER finalize (request_changes) immediately after run_tests. Always analyze the code first.
 """
 
 
@@ -316,7 +326,24 @@ class LLMAgent:
 
         # Progress nudging to prevent loops
         code = obs.get("code", "")
-        if self._step >= 3 and not self._has_issued:
+
+        # Detect when tests pass on first run — nudge LLM to still review code
+        tests_passed = obs.get("tests_passed", None)
+        if self._step == 2 and tests_passed and not self._has_issued:
+            # Tests passed but agent hasn't analyzed the code yet
+            # Re-show the code so the LLM reviews it
+            if code:
+                MAX_REVIEW_CODE = 3000
+                code_for_review = code[:MAX_REVIEW_CODE] + ("\n..." if len(code) > MAX_REVIEW_CODE else "")
+                parts.append(f"\n## Source Code (review carefully):\n```python\n{code_for_review}\n```")
+            parts.append(
+                "\n>> IMPORTANT: Tests passing does NOT mean the code is bug-free. Tests often have incomplete coverage."
+                "\n>> You MUST carefully review the source code for issues like: resource leaks, missing error handling, "
+                "off-by-one errors, security issues, bad practices, logic errors, etc."
+                "\n>> Your next action should be run_code to investigate, or create_issue if you already see a bug."
+                "\n>> Do NOT finalize yet."
+            )
+        elif self._step >= 3 and not self._has_issued:
             parts.append("\n>> IMPORTANT: You've explored enough. Now use create_issue to describe the bug you found.")
         elif self._has_issued and not self._has_fixed:
             # Re-show the code so the LLM can write the fix — truncated
